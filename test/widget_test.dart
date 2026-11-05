@@ -33,7 +33,7 @@ void main() {
     );
   });
 
-  testWidgets('Mobile and Desktop layouts render without overflow',
+  testWidgets('Mobile and Desktop Taste-Skill layouts render without overflow',
       (WidgetTester tester) async {
     final mockAccounts = [
       {
@@ -83,34 +83,105 @@ void main() {
       }
     ];
 
+    final mockDash = {
+      'account': mockAccounts.first,
+      'currentStudent': (mockAccounts.first['students'] as List).first,
+      'exams': [
+        {
+          'examId': 'ex_1',
+          'studentId': 'stu_1',
+          'name': '期中联考',
+          'time': 1730000000000,
+          'score': 568,
+          'scoreS': '568',
+          'manfen': 660,
+          'ratio': 86.1,
+          'isPartial': false,
+          'reportedPaperCount': 2,
+          'classRankS': '3',
+          'gradeRankS': '15',
+          'totalWrong': 4,
+          'papers': [
+            {
+              'paperId': 'p_1',
+              'pid': 'p_1',
+              'subject': '语文',
+              'name': '语文',
+              'score': 108,
+              'scoreS': '108',
+              'manfen': 120,
+              'ratio': 90.0,
+              'wrongNum': 2,
+            },
+            {
+              'paperId': 'p_2',
+              'pid': 'p_2',
+              'subject': '数学',
+              'name': '数学',
+              'score': 114,
+              'scoreS': '114',
+              'manfen': 120,
+              'ratio': 95.0,
+              'wrongNum': 2,
+            },
+          ],
+        }
+      ],
+      'wrongOverview': [
+        {
+          'subject': '数学',
+          'noReview': 2,
+          'semesters': [
+            {'name': '上学期', 'wrongNum': 2, 'reviewNum': 0}
+          ],
+          'exams': [
+            {
+              'examId': 'ex_1',
+              'examName': '期中联考',
+              'examTime': 1730000000000,
+              'wrongNum': 2,
+              'reviewNum': 0,
+            }
+          ],
+        }
+      ],
+      'isMember': true,
+      'isExamMember': true,
+      'unlockedSubjects': 5,
+      'totalSubjects': 5,
+      'uploadRemain': '10',
+      'exportRemain': '10',
+    };
+
     SharedPreferences.setMockInitialValues({
       'hfs_direct_accounts_v1': jsonEncode(mockAccounts),
       'hfs_direct_selected_id_v1': 'acc_test_1',
+      'hfs_dash_snap_v2:acc_test_1:stu_1': jsonEncode(mockDash),
     });
 
-    // 1. Mobile phone viewport (360 x 780)
-    tester.view.physicalSize = const Size(360, 780);
+    // 1. Mobile phone viewport (390 x 844)
+    tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(const HfsFlutterApp());
-    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 250));
 
     expect(find.byType(NavigationBar), findsOneWidget);
-    expect(find.text('账号与学生'), findsOneWidget);
+    expect(find.text('多号与学生'), findsOneWidget);
 
-    // Switch to mobile tab 3 (账号与学生)
-    await tester.tap(find.text('账号与学生'));
-    await tester.pump(const Duration(milliseconds: 200));
-    expect(find.text('已登录账号与绑定学生'), findsOneWidget);
+    // Switch to mobile tab 3 (多号与学生)
+    await tester.tap(find.text('多号与学生'));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.text('好分数账号与绑定学生'), findsOneWidget);
 
     // 2. Desktop computer viewport (1440 x 900)
     tester.view.physicalSize = const Size(1440, 900);
-    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 250));
 
     expect(find.byType(NavigationBar), findsNothing);
-    expect(find.byType(SegmentedButton<int>), findsOneWidget);
     expect(find.text('好分数成绩工作台'), findsOneWidget);
+    expect(find.text('历次考试总分与单科矩阵'), findsOneWidget);
   });
 }

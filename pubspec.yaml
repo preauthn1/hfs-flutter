@@ -1,7 +1,7 @@
 name: hfs_flutter
 description: "Haofenshu Native Flutter Client (Direct HFS Upstream Only, Mobile + Desktop)"
 publish_to: 'none'
-version: 1.0.0+1
+version: 2.0.0+2
 
 environment:
   sdk: '>=3.6.0 <4.0.0'
@@ -21,3 +21,12 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: NotoSansSC
+      fonts:
+        - asset: assets/fonts/NotoSansSC-400.ttf
+          weight: 400
+        - asset: assets/fonts/NotoSansSC-500.ttf
+          weight: 500
+        - asset: assets/fonts/NotoSansSC-700.ttf
+          weight: 700

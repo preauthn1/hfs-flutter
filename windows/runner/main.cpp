@@ -27,7 +27,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(40, 40);
   Win32Window::Size size(1360, 840);
-  if (!window.Create(L"好分数 · 原生工作台", origin, size)) {
+  if (!window.Create(L"\u597d\u5206\u6570 \u00b7 \u539f\u751f\u5de5\u4f5c\u53f0", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

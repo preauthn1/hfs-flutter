@@ -7,6 +7,22 @@ import 'package:http/http.dart' as http;
 
 import 'hfs_models.dart';
 
+class SmsSendOutcome {
+  final int code;
+  final String message;
+  final String? captchaSvg;
+
+  const SmsSendOutcome({
+    required this.code,
+    required this.message,
+    this.captchaSvg,
+  });
+
+  bool get isOk => code == 0;
+  bool get needsCaptcha => code == 4048;
+  bool get isAlreadyOccupied => code == 4044;
+}
+
 class HfsUpstreamClient {
   /// Strictly connects ONLY to official Haofenshu upstream hosts:
   /// - API: https://hfs-be.yunxiao.com
@@ -30,6 +46,11 @@ class HfsUpstreamClient {
   final http.Client _http = http.Client();
   final Map<String, ({DashboardData data, DateTime expiresAt})> _dashCache = {};
   final Map<String, ({Uint8List bytes, DateTime expiresAt})> _imgCache = {};
+  final Map<String, ({List<WrongQuestionItem> items, DateTime expiresAt})>
+      _wrongExamCache = {};
+  final Map<String, Future<void>> _accountGates = {};
+  final Map<String, int> _switchGenerations = {};
+  List<RegionProvinceItem>? _regionCache;
 
   static void assertAllowedHost(Uri uri) {
     if (uri.scheme != 'https' ||
@@ -44,6 +65,28 @@ class HfsUpstreamClient {
     return base64UrlEncode(digest).replaceAll('=', '').substring(0, 14);
   }
 
+  Future<T> _withAccountLock<T>(
+    String accountId,
+    Future<T> Function() action,
+  ) async {
+    final prev = _accountGates[accountId];
+    final completer = Completer<void>();
+    _accountGates[accountId] = completer.future;
+    if (prev != null) {
+      try {
+        await prev;
+      } catch (_) {}
+    }
+    try {
+      return await action();
+    } finally {
+      completer.complete();
+      if (identical(_accountGates[accountId], completer.future)) {
+        _accountGates.remove(accountId);
+      }
+    }
+  }
+
   Map<String, String> _roleHeaders(int roleType, {List<String>? cookies}) {
     final headers = <String, String>{
       'deviceType': '1',
@@ -51,6 +94,7 @@ class HfsUpstreamClient {
       'versionName': '4.31.81',
       'User-Agent': 'YX Android 14',
       'Accept': 'application/json',
+      'checkYlt': 'false',
     };
     if (cookies != null && cookies.isNotEmpty) {
       headers['Cookie'] = cookies.join('; ');
@@ -94,6 +138,17 @@ class HfsUpstreamClient {
 
   bool _isCodeOk(dynamic code) => intOf(code, -1) == 0;
 
+  Map<String, dynamic> _decodeJsonMap(Uint8List bytes) {
+    if (bytes.isEmpty) return <String, dynamic>{};
+    try {
+      final decoded = jsonDecode(utf8.decode(bytes, allowMalformed: true));
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {}
+    return <String, dynamic>{};
+  }
+
   Future<List<String>> loginHfs({
     required String loginName,
     required String password,
@@ -125,7 +180,7 @@ class HfsUpstreamClient {
     if (resp.statusCode < 200 ||
         resp.statusCode >= 300 ||
         jar.isEmpty ||
-        (code != 0 && code != 1 && code != 11)) {
+        (code != 0 && code != 1 && code != 10 && code != 11)) {
       if (code == 4046) {
         final roleLabel = roleType == 1 ? '学生版' : '家长版';
         throw Exception('账号或密码错误（当前选择：$roleLabel）');
@@ -133,6 +188,235 @@ class HfsUpstreamClient {
       throw Exception(strOf(body['msg'], '好分数登录失败'));
     }
     return jar;
+  }
+
+  /// Fetch graphical SVG captcha (`GET /v2/users/captcha?phone=...`)
+  Future<String> fetchCaptchaSvg({
+    required String phoneNumber,
+    int roleType = 2,
+  }) async {
+    final cleanPhone = phoneNumber.trim();
+    final uri = Uri.parse(
+      '$kHfsBaseUrl/v2/users/captcha?phone=${Uri.encodeQueryComponent(cleanPhone)}',
+    );
+    assertAllowedHost(uri);
+    final resp = await _http
+        .get(uri, headers: _roleHeaders(roleType))
+        .timeout(const Duration(seconds: 15));
+    final body = _decodeJsonMap(resp.bodyBytes);
+    final data = (body['data'] is Map)
+        ? Map<String, dynamic>.from(body['data'] as Map)
+        : const <String, dynamic>{};
+    final pic = strOf(data['pic']);
+    if (pic.isEmpty) {
+      throw Exception(strOf(body['msg'], '获取图形验证码失败'));
+    }
+    return pic;
+  }
+
+  /// Send registration SMS verification code (`POST /v2/native-users/verification-msg-with-captcha`)
+  Future<SmsSendOutcome> sendRegisterSmsCode({
+    required String phoneNumber,
+    required int roleType,
+    String captchaCode = '',
+  }) async {
+    final uri = Uri.parse(
+      '$kHfsBaseUrl/v2/native-users/verification-msg-with-captcha',
+    );
+    assertAllowedHost(uri);
+    final headers = _roleHeaders(roleType);
+    headers['Content-Type'] = 'application/json; charset=UTF-8';
+    final payload = jsonEncode(<String, dynamic>{
+      'roleType': roleType,
+      'phoneNumber': phoneNumber.trim(),
+      'code': captchaCode.trim(),
+    });
+    final resp = await _http
+        .post(uri, headers: headers, body: payload)
+        .timeout(const Duration(seconds: 20));
+    final body = _decodeJsonMap(resp.bodyBytes);
+    final code = intOf(body['code'], -1);
+    final data = (body['data'] is Map)
+        ? Map<String, dynamic>.from(body['data'] as Map)
+        : const <String, dynamic>{};
+    final svg = strOf(data['pic']);
+    return SmsSendOutcome(
+      code: code,
+      message: strOf(body['msg'], code == 0 ? '验证码已发送' : '发送验证码失败'),
+      captchaSvg: svg.isNotEmpty ? svg : null,
+    );
+  }
+
+  /// Register new Haofenshu account (`POST /v2/native-users/activation`)
+  /// Mirrors APK `UserTask.b(phone, password, smsCode, invitationCode)` -> `BindPhoneReq(JsonUtils.b(NativeMsgToken))`
+  Future<List<String>> registerNativeAccount({
+    required String phoneNumber,
+    required String password,
+    required String verificationCode,
+    required int roleType,
+    String invitationCode = '',
+  }) async {
+    final uri = Uri.parse('$kHfsBaseUrl/v2/native-users/activation');
+    assertAllowedHost(uri);
+
+    final tokenMap = <String, dynamic>{
+      'roleType': roleType,
+      'phoneNumber': phoneNumber.trim(),
+      'verificationCode': verificationCode.trim(),
+      'password': password,
+      if (invitationCode.trim().isNotEmpty)
+        'invitationCode': invitationCode.trim(),
+    };
+    final bodyPayload = jsonEncode(<String, dynamic>{
+      'verificationType': 2,
+      'verificationMsgToken': jsonEncode(tokenMap),
+      'deviceType': 1,
+      'forceReplace': false,
+    });
+
+    final headers = _roleHeaders(roleType);
+    headers['Content-Type'] = 'application/json; charset=UTF-8';
+    final resp = await _http
+        .post(uri, headers: headers, body: bodyPayload)
+        .timeout(const Duration(seconds: 20));
+    final body = _decodeJsonMap(resp.bodyBytes);
+    final code = intOf(body['code'], -1);
+    var jar = _parseSetCookies(resp.headers);
+    final data = (body['data'] is Map)
+        ? Map<String, dynamic>.from(body['data'] as Map)
+        : const <String, dynamic>{};
+    final dataCookie = strOf(data['cookie']);
+    if (jar.isEmpty && dataCookie.isNotEmpty) {
+      jar = <String>[dataCookie.split(';').first.trim()];
+    }
+
+    if (code == 4044) {
+      throw Exception('该手机号已被注册，请直接切换到“登录已有账号”');
+    }
+    if (code != 0 && code != 10 && code != 11) {
+      throw Exception(strOf(body['msg'], '注册好分数账号失败 (code=$code)'));
+    }
+    if (jar.isEmpty) {
+      // Automatically login to obtain fresh session cookies
+      jar = await loginHfs(
+        loginName: phoneNumber.trim(),
+        password: password,
+        roleType: roleType,
+      );
+    }
+    return jar;
+  }
+
+  /// Send password-reset SMS verification code (`POST /v2/users/retrieving-msg-code-with-captcha`)
+  Future<SmsSendOutcome> sendResetPwdSmsCode({
+    required String phoneNumber,
+    required int roleType,
+    String captchaCode = '',
+  }) async {
+    final uri = Uri.parse(
+      '$kHfsBaseUrl/v2/users/retrieving-msg-code-with-captcha',
+    );
+    assertAllowedHost(uri);
+    final headers = _roleHeaders(roleType);
+    headers['Content-Type'] = 'application/json; charset=UTF-8';
+    final payload = jsonEncode(<String, dynamic>{
+      'roleType': roleType,
+      'phoneNumber': phoneNumber.trim(),
+      'code': captchaCode.trim(),
+    });
+    final resp = await _http
+        .post(uri, headers: headers, body: payload)
+        .timeout(const Duration(seconds: 20));
+    final body = _decodeJsonMap(resp.bodyBytes);
+    final code = intOf(body['code'], -1);
+    final data = (body['data'] is Map)
+        ? Map<String, dynamic>.from(body['data'] as Map)
+        : const <String, dynamic>{};
+    final svg = strOf(data['pic']);
+    return SmsSendOutcome(
+      code: code,
+      message: strOf(body['msg'], code == 0 ? '找回密码验证码已发送' : '发送验证码失败'),
+      captchaSvg: svg.isNotEmpty ? svg : null,
+    );
+  }
+
+  /// Complete password reset (`POST /v2/users/retrieving-msg-token` -> `PUT /v2/users/forgot-password`)
+  Future<void> resetForgotPassword({
+    required String phoneNumber,
+    required String smsCode,
+    required String newPassword,
+    required int roleType,
+  }) async {
+    final tokenUri = Uri.parse('$kHfsBaseUrl/v2/users/retrieving-msg-token');
+    assertAllowedHost(tokenUri);
+    final headers = _roleHeaders(roleType);
+    headers['Content-Type'] = 'application/json; charset=UTF-8';
+
+    final tokenResp = await _http
+        .post(
+          tokenUri,
+          headers: headers,
+          body: jsonEncode(<String, dynamic>{
+            'roleType': roleType,
+            'phoneNumber': phoneNumber.trim(),
+            'retrievingMsgCode': smsCode.trim(),
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
+    final tokenBody = _decodeJsonMap(tokenResp.bodyBytes);
+    if (!_isCodeOk(tokenBody['code'])) {
+      throw Exception(strOf(tokenBody['msg'], '短信验证码校验失败'));
+    }
+    final tData = (tokenBody['data'] is Map)
+        ? Map<String, dynamic>.from(tokenBody['data'] as Map)
+        : const <String, dynamic>{};
+    final retrievingToken = tData['retrievingToken'] is String
+        ? strOf(tData['retrievingToken'])
+        : (tData['token'] is String
+            ? strOf(tData['token'])
+            : (tokenBody['data'] is String ? strOf(tokenBody['data']) : ''));
+    if (retrievingToken.isEmpty) {
+      throw Exception('未获取到重置密码令牌');
+    }
+
+    final resetUri = Uri.parse('$kHfsBaseUrl/v2/users/forgot-password');
+    assertAllowedHost(resetUri);
+    final resetResp = await _http
+        .put(
+          resetUri,
+          headers: headers,
+          body: jsonEncode(<String, dynamic>{
+            'retrievingType': 2,
+            'retrievingToken': retrievingToken,
+            'password': newPassword,
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
+    final resetBody = _decodeJsonMap(resetResp.bodyBytes);
+    if (!_isCodeOk(resetBody['code'])) {
+      throw Exception(strOf(resetBody['msg'], '重置密码失败'));
+    }
+  }
+
+  /// Change account password when logged in (`PUT /v2/users/password`)
+  Future<void> changeAccountPassword({
+    required HfsAccount account,
+    required String originalPassword,
+    required String newPassword,
+  }) async {
+    await ensureAccount(account);
+    final res = await _hfsFetch(
+      account,
+      '/v2/users/password',
+      method: 'PUT',
+      jsonBody: <String, dynamic>{
+        'originalPassword': originalPassword,
+        'newPassword': newPassword,
+      },
+    );
+    if (!_isCodeOk(res.body['code'])) {
+      throw Exception(strOf(res.body['msg'], '修改密码失败'));
+    }
   }
 
   Future<({int status, Map<String, dynamic> body})> _hfsFetch(
@@ -163,6 +447,16 @@ class HfsUpstreamClient {
             .put(uri, headers: headers, body: encodedBody)
             .timeout(const Duration(seconds: 20));
         break;
+      case 'PATCH':
+        resp = await _http
+            .patch(uri, headers: headers, body: encodedBody)
+            .timeout(const Duration(seconds: 20));
+        break;
+      case 'DELETE':
+        resp = await _http
+            .delete(uri, headers: headers, body: encodedBody)
+            .timeout(const Duration(seconds: 20));
+        break;
       default:
         resp = await _http
             .get(uri, headers: headers)
@@ -176,17 +470,6 @@ class HfsUpstreamClient {
     return (status: resp.statusCode, body: _decodeJsonMap(resp.bodyBytes));
   }
 
-  Map<String, dynamic> _decodeJsonMap(Uint8List bytes) {
-    if (bytes.isEmpty) return <String, dynamic>{};
-    try {
-      final decoded = jsonDecode(utf8.decode(bytes, allowMalformed: true));
-      if (decoded is Map) {
-        return Map<String, dynamic>.from(decoded);
-      }
-    } catch (_) {}
-    return <String, dynamic>{};
-  }
-
   Future<Map<String, dynamic>> ensureAccount(
     HfsAccount account, {
     String targetStudentId = '',
@@ -195,7 +478,12 @@ class HfsUpstreamClient {
       account,
       '/v2/user-center/user-snapshot?devicetype=1',
     );
-    if (intOf(check.body['code'], -1) == 3001 ||
+    final checkCode = intOf(check.body['code'], -1);
+    if (checkCode == 3001 ||
+        checkCode == 1004 ||
+        checkCode == 4101 ||
+        check.status == 401 ||
+        check.status == 403 ||
         check.status < 200 ||
         check.status >= 300) {
       if (account.loginName.trim().isEmpty || account.password.isEmpty) {
@@ -267,6 +555,12 @@ class HfsUpstreamClient {
   }
 
   Future<Map<String, dynamic>> hydrateAccountStudents(HfsAccount account) async {
+    return _withAccountLock(account.id, () => _hydrateAccountStudentsUnlocked(account));
+  }
+
+  Future<Map<String, dynamic>> _hydrateAccountStudentsUnlocked(
+    HfsAccount account,
+  ) async {
     final snapData = await ensureAccount(account);
     final rel = await _hfsFetch(account, '/v2/user-center/related-students');
     if (_isCodeOk(rel.body['code']) && rel.body['data'] is List) {
@@ -285,7 +579,7 @@ class HfsUpstreamClient {
       if (linkedStu.studentId.isNotEmpty) {
         account.activeStudentId = linkedStu.studentId;
       }
-      if (account.students.isEmpty) {
+      if (account.students.isEmpty && linkedStu.studentId.isNotEmpty) {
         account.students = <StudentInfo>[linkedStu];
       }
     }
@@ -295,174 +589,247 @@ class HfsUpstreamClient {
 
   void invalidateCache(String accountId) {
     _dashCache.removeWhere(
-        (key, _) => key == accountId || key.startsWith('$accountId:'));
+      (key, _) => key == accountId || key.startsWith('$accountId:'),
+    );
+    _wrongExamCache.removeWhere(
+      (key, _) => key.startsWith('$accountId:'),
+    );
+  }
+
+  void clearAllCaches() {
+    _dashCache.clear();
+    _imgCache.clear();
+    _wrongExamCache.clear();
+  }
+
+  void seedDashboardCache(
+    String accountId,
+    String studentId,
+    DashboardData data,
+  ) {
+    final cacheKey = '$accountId:$studentId';
+    _dashCache[cacheKey] = (
+      data: data,
+      expiresAt: DateTime.now().add(const Duration(minutes: 10)),
+    );
+  }
+
+  DashboardData? peekCachedDashboard(String accountId, String studentId) {
+    final hit = _dashCache['$accountId:$studentId'];
+    if (hit != null && DateTime.now().isBefore(hit.expiresAt)) {
+      return hit.data;
+    }
+    return null;
   }
 
   Future<DashboardData> fetchDashboard(
     HfsAccount account, {
     bool allowCache = true,
+    int maxExams = 10,
+    int concurrency = 4,
   }) async {
-    final snapData = await hydrateAccountStudents(account);
-    final activeStuId = account.activeStudentId;
-    final cacheKey = '${account.id}:$activeStuId';
-    if (allowCache) {
-      final hit = _dashCache[cacheKey];
-      if (hit != null && DateTime.now().isBefore(hit.expiresAt)) {
-        return hit.data;
-      }
-    }
-
-    const baseRoutes = <String>[
-      '/v2/user-center/profile',
-      '/v2/user-center/payment-info',
-      '/v2/wrong-items/overview',
-      '/v2/wrong-items/unlock-status',
-      '/v3/cuoti/remain-right',
-      '/v3/exam/list?start=0',
-    ];
-
-    final baseRes = await Future.wait(
-      baseRoutes.map((p) async {
-        try {
-          final r = await _hfsFetch(account, p);
-          return r.body;
-        } catch (_) {
-          return <String, dynamic>{};
+    return _withAccountLock(account.id, () async {
+      final wantStu = account.desiredStudentId.isNotEmpty
+          ? account.desiredStudentId
+          : account.activeStudentId;
+      if (allowCache && wantStu.isNotEmpty) {
+        final fastHit = _dashCache['${account.id}:$wantStu'];
+        if (fastHit != null && DateTime.now().isBefore(fastHit.expiresAt)) {
+          account.activeStudentId = wantStu;
+          return fastHit.data;
         }
-      }),
-    );
+      }
 
-    final payment = (baseRes[1]['data'] is Map)
-        ? Map<String, dynamic>.from(baseRes[1]['data'] as Map)
-        : <String, dynamic>{};
-    final wrongRaw = (baseRes[2]['data'] is List)
-        ? (baseRes[2]['data'] as List)
-        : const <dynamic>[];
-    final unlock = (baseRes[3]['data'] is Map)
-        ? Map<String, dynamic>.from(baseRes[3]['data'] as Map)
-        : <String, dynamic>{};
-    final rights = (baseRes[4]['data'] is Map)
-        ? Map<String, dynamic>.from(baseRes[4]['data'] as Map)
-        : <String, dynamic>{};
+      final snapData = await _hydrateAccountStudentsUnlocked(account);
+      final activeStuId = account.activeStudentId;
+      final cacheKey = '${account.id}:$activeStuId';
+      if (allowCache) {
+        final hit = _dashCache[cacheKey];
+        if (hit != null && DateTime.now().isBefore(hit.expiresAt)) {
+          return hit.data;
+        }
+      }
 
-    List<dynamic> examListResp = const [];
-    final exData = baseRes[5]['data'];
-    if (exData is Map && exData['list'] is List) {
-      examListResp = exData['list'] as List;
-    } else if (exData is List) {
-      examListResp = exData;
-    }
+      const baseRoutes = <String>[
+        '/v2/user-center/profile',
+        '/v2/user-center/payment-info',
+        '/v2/wrong-items/overview',
+        '/v2/wrong-items/unlock-status',
+        '/v3/cuoti/remain-right',
+        '/v3/exam/list?start=0',
+        '/v2/config/school/hidden-config',
+      ];
 
-    final examSeeds = <String, _ExamSeed>{};
-    for (final raw in examListResp) {
-      if (raw is! Map) continue;
-      final m = Map<String, dynamic>.from(raw);
-      final id =
-          strOf(m['examId']).isNotEmpty ? strOf(m['examId']) : strOf(m['id']);
-      if (id.isEmpty) continue;
-      examSeeds[id] = _ExamSeed(
-        examId: id,
-        examName: strOf(m['name'], strOf(m['examName'], '考试')),
-        examTime: intOf(m['time'], intOf(m['examTime'])),
-      );
-    }
-
-    final wrongSummaries = <WrongSubjectSummary>[];
-    for (final rawSubj in wrongRaw) {
-      if (rawSubj is! Map) continue;
-      final sm = Map<String, dynamic>.from(rawSubj);
-      final sName = strOf(sm['subject'], '学科');
-      final exList =
-          (sm['examList'] is List) ? (sm['examList'] as List) : const [];
-      final semList = (sm['semesterList'] is List)
-          ? (sm['semesterList'] as List)
-          : const [];
-
-      wrongSummaries.add(
-        WrongSubjectSummary(
-          subject: sName,
-          noReview: intOf(sm['noReview']),
-          semesters: semList
-              .whereType<Map>()
-              .map((s) => WrongSemesterItem(
-                    name: strOf(s['name']),
-                    wrongNum: intOf(s['wrongNum']),
-                  ))
-              .toList(),
-          examCount: exList.length,
-        ),
+      final baseRes = await Future.wait(
+        baseRoutes.map((p) async {
+          try {
+            final r = await _hfsFetch(account, p);
+            return r.body;
+          } catch (_) {
+            return <String, dynamic>{};
+          }
+        }),
       );
 
-      for (final rawEx in exList) {
-        if (rawEx is! Map) continue;
-        final em = Map<String, dynamic>.from(rawEx);
-        final id = strOf(em['examId']);
+      final profile = (baseRes[0]['data'] is Map)
+          ? Map<String, dynamic>.from(baseRes[0]['data'] as Map)
+          : <String, dynamic>{};
+      final payment = (baseRes[1]['data'] is Map)
+          ? Map<String, dynamic>.from(baseRes[1]['data'] as Map)
+          : <String, dynamic>{};
+      final wrongRaw = (baseRes[2]['data'] is List)
+          ? (baseRes[2]['data'] as List)
+          : const <dynamic>[];
+      final unlock = (baseRes[3]['data'] is Map)
+          ? Map<String, dynamic>.from(baseRes[3]['data'] as Map)
+          : <String, dynamic>{};
+      final rights = (baseRes[4]['data'] is Map)
+          ? Map<String, dynamic>.from(baseRes[4]['data'] as Map)
+          : <String, dynamic>{};
+      final schoolHidden = (baseRes[6]['data'] is Map)
+          ? Map<String, dynamic>.from(baseRes[6]['data'] as Map)
+          : <String, dynamic>{};
+
+      List<dynamic> examListResp = const [];
+      final exData = baseRes[5]['data'];
+      if (exData is Map && exData['list'] is List) {
+        examListResp = exData['list'] as List;
+      } else if (exData is List) {
+        examListResp = exData;
+      }
+
+      final examSeeds = <String, _ExamSeed>{};
+      for (final raw in examListResp) {
+        if (raw is! Map) continue;
+        final m = Map<String, dynamic>.from(raw);
+        final id =
+            strOf(m['examId']).isNotEmpty ? strOf(m['examId']) : strOf(m['id']);
         if (id.isEmpty) continue;
-        final seed = examSeeds.putIfAbsent(
-          id,
-          () => _ExamSeed(
-            examId: id,
-            examName: strOf(em['examName'], '考试'),
-            examTime: intOf(em['examTime']),
+        examSeeds[id] = _ExamSeed(
+          examId: id,
+          examName: strOf(m['name'], strOf(m['examName'], '考试')),
+          examTime: intOf(m['time'], intOf(m['examTime'])),
+        );
+      }
+
+      final wrongSummaries = <WrongSubjectSummary>[];
+      for (final rawSubj in wrongRaw) {
+        if (rawSubj is! Map) continue;
+        final sm = Map<String, dynamic>.from(rawSubj);
+        final sName = strOf(sm['subject'], '学科');
+        final exList =
+            (sm['examList'] is List) ? (sm['examList'] as List) : const [];
+        final semList = (sm['semesterList'] is List)
+            ? (sm['semesterList'] as List)
+            : const [];
+
+        final examRefs = <WrongExamRef>[];
+        for (final rawEx in exList) {
+          if (rawEx is! Map) continue;
+          final em = Map<String, dynamic>.from(rawEx);
+          final id = strOf(em['examId']);
+          if (id.isEmpty) continue;
+          final wn = intOf(em['wrongNum']);
+          final rn = intOf(em['reviewNum']);
+          final eName = strOf(em['examName'], '考试');
+          final eTime = intOf(em['examTime']);
+          examRefs.add(
+            WrongExamRef(
+              examId: id,
+              examName: eName,
+              examTime: eTime,
+              wrongNum: wn,
+              reviewNum: rn,
+            ),
+          );
+
+          final seed = examSeeds.putIfAbsent(
+            id,
+            () => _ExamSeed(
+              examId: id,
+              examName: eName,
+              examTime: eTime,
+            ),
+          );
+          seed.wrongBySubject[sName] = wn;
+          seed.totalWrong += wn;
+        }
+        examRefs.sort((a, b) => b.examTime.compareTo(a.examTime));
+
+        wrongSummaries.add(
+          WrongSubjectSummary(
+            subject: sName,
+            noReview: intOf(sm['noReview']),
+            semesters: semList
+                .whereType<Map>()
+                .map((s) => WrongSemesterItem.fromJson(
+                      Map<String, dynamic>.from(s),
+                    ))
+                .toList(),
+            exams: examRefs,
           ),
         );
-        final wn = intOf(em['wrongNum']);
-        seed.wrongBySubject[sName] = wn;
-        seed.totalWrong += wn;
       }
-    }
 
-    final sortedSeeds = examSeeds.values.toList()
-      ..sort((a, b) {
-        if (a.examTime != b.examTime) return b.examTime.compareTo(a.examTime);
-        return b.examId.compareTo(a.examId);
-      });
-    final cappedSeeds = sortedSeeds.take(15).toList();
+      final sortedSeeds = examSeeds.values.toList()
+        ..sort((a, b) {
+          if (a.examTime != b.examTime) return b.examTime.compareTo(a.examTime);
+          return intOf(b.examId).compareTo(intOf(a.examId));
+        });
+      final cappedSeeds = sortedSeeds.take(maxExams.clamp(3, 30)).toList();
+      final step = concurrency.clamp(1, 8);
 
-    final hydratedExams = <ExamRecord>[];
-    for (var i = 0; i < cappedSeeds.length; i += 4) {
-      final batch = cappedSeeds.skip(i).take(4);
-      final batchRes = await Future.wait(
-        batch.map((seed) => _hydrateSingleExam(account, seed, activeStuId)),
+      final hydratedExams = <ExamRecord>[];
+      for (var i = 0; i < cappedSeeds.length; i += step) {
+        final batch = cappedSeeds.skip(i).take(step);
+        final batchRes = await Future.wait(
+          batch.map((seed) => _hydrateSingleExam(account, seed, activeStuId)),
+        );
+        hydratedExams.addAll(batchRes);
+      }
+
+      if (activeStuId.isNotEmpty && hydratedExams.isNotEmpty) {
+        final latest = hydratedExams.first;
+        account.studentSnapshots[activeStuId] = StudentSnapshot(
+          examId: latest.examId,
+          examName: latest.name,
+          examTime: latest.time,
+          scoreS: latest.scoreS,
+          manfen: latest.manfen,
+          ratio: latest.ratio,
+          isPartial: latest.isPartial,
+          reportedPaperCount: latest.reportedPaperCount,
+          classRankS: latest.classRankS,
+          gradeRankS: latest.gradeRankS,
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+        );
+      }
+
+      final dash = DashboardData(
+        account: account,
+        currentStudent: account.activeStudent,
+        exams: hydratedExams,
+        wrongOverview: wrongSummaries,
+        isMember: boolOf(payment['isMember']) || boolOf(snapData['isMember']),
+        isExamMember: boolOf(snapData['isExamMember']),
+        unlockedSubjects: intOf(unlock['unlockedSubjectNumber']),
+        totalSubjects: intOf(unlock['totalSubjectNumber']),
+        uploadRemain: strOf(rights['uploadRemain'], '-'),
+        exportRemain: strOf(rights['exportRemain'], '-'),
+        rawProfile: profile,
+        rawSnapshot: snapData,
+        rawPayment: payment,
+        rawUnlock: unlock,
+        rawRights: rights,
+        rawSchoolHidden: schoolHidden,
       );
-      hydratedExams.addAll(batchRes);
-    }
 
-    if (activeStuId.isNotEmpty && hydratedExams.isNotEmpty) {
-      final latest = hydratedExams.first;
-      account.studentSnapshots[activeStuId] = StudentSnapshot(
-        examId: latest.examId,
-        examName: latest.name,
-        examTime: latest.time,
-        scoreS: latest.scoreS,
-        manfen: latest.manfen,
-        ratio: latest.ratio,
-        isPartial: latest.isPartial,
-        reportedPaperCount: latest.reportedPaperCount,
-        classRankS: latest.classRankS,
-        gradeRankS: latest.gradeRankS,
-        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      _dashCache[cacheKey] = (
+        data: dash,
+        expiresAt: DateTime.now().add(const Duration(minutes: 10)),
       );
-    }
-
-    final dash = DashboardData(
-      account: account,
-      currentStudent: account.activeStudent,
-      exams: hydratedExams,
-      wrongOverview: wrongSummaries,
-      isMember: boolOf(payment['isMember']) || boolOf(snapData['isMember']),
-      isExamMember: boolOf(snapData['isExamMember']),
-      unlockedSubjects: intOf(unlock['unlockedSubjectNumber']),
-      totalSubjects: intOf(unlock['totalSubjectNumber']),
-      uploadRemain: strOf(rights['uploadRemain'], '-'),
-      exportRemain: strOf(rights['exportRemain'], '-'),
-    );
-
-    _dashCache[cacheKey] = (
-      data: dash,
-      expiresAt: DateTime.now().add(const Duration(seconds: 45)),
-    );
-    return dash;
+      return dash;
+    });
   }
 
   Future<ExamRecord> _hydrateSingleExam(
@@ -574,14 +941,42 @@ class HfsUpstreamClient {
 
   Future<DashboardData> switchStudent(
     HfsAccount account,
-    String studentId,
-  ) async {
+    String studentId, {
+    bool allowCache = true,
+    int maxExams = 10,
+    int concurrency = 4,
+  }) async {
+    final gen = (_switchGenerations[account.id] ?? 0) + 1;
+    _switchGenerations[account.id] = gen;
     account.desiredStudentId = studentId;
-    await ensureAccount(account, targetStudentId: studentId);
-    account.activeStudentId = studentId;
-    return fetchDashboard(account, allowCache: false);
+    if (allowCache) {
+      final cached = peekCachedDashboard(account.id, studentId);
+      if (cached != null) {
+        account.activeStudentId = studentId;
+        // Fire-and-forget session sync in background so UI switches in <10ms
+        unawaited(
+          _withAccountLock(account.id, () async {
+            if (_switchGenerations[account.id] != gen ||
+                account.desiredStudentId != studentId) {
+              return;
+            }
+            try {
+              await ensureAccount(account, targetStudentId: studentId);
+            } catch (_) {}
+          }),
+        );
+        return cached;
+      }
+    }
+    return fetchDashboard(
+      account,
+      allowCache: allowCache,
+      maxExams: maxExams,
+      concurrency: concurrency,
+    );
   }
 
+  /// Bind student via Name + Exam/Student No (`GET /v2/users/matched-students` -> `PUT /v2/users/bind-student`)
   Future<DashboardData> bindStudent({
     required HfsAccount account,
     required String studentName,
@@ -605,7 +1000,13 @@ class HfsUpstreamClient {
       throw Exception('未找到匹配的学生信息，请核对姓名与准考证号');
     }
     final targetStu = Map<String, dynamic>.from(mList.first as Map);
-    final targetId = strOf(targetStu['studentId']);
+    final targetId = strOf(
+      targetStu['studentId'],
+      strOf(targetStu['id']),
+    );
+    if (targetId.isEmpty) {
+      throw Exception('匹配到的学生记录缺少有效 studentId');
+    }
 
     final bindRes = await _hfsFetch(
       account,
@@ -634,106 +1035,523 @@ class HfsUpstreamClient {
     return fetchDashboard(account, allowCache: false);
   }
 
-  Future<void> probeAllStudents(HfsAccount account) async {
+  /// Bind student via Student Account + Password (`POST /v2/native-users/bind-student-by-account`)
+  /// NOTE: Defaults `chooseStudentId` to `""` so existing bound students are never overwritten unless explicitly requested.
+  Future<DashboardData> bindStudentByAccount({
+    required HfsAccount account,
+    required String studentAccount,
+    required String studentPassword,
+    String chooseStudentId = '',
+  }) async {
     await hydrateAccountStudents(account);
-    final origStuId = account.activeStudentId;
-
-    for (final s in account.students) {
-      final sid = s.studentId;
-      if (sid.isEmpty) continue;
-      await _hfsFetch(
-        account,
-        '/v2/user-center/sessions',
-        method: 'POST',
-        jsonBody: <String, dynamic>{'deviceType': 1, 'studentId': sid},
+    final res = await _hfsFetch(
+      account,
+      '/v2/native-users/bind-student-by-account',
+      method: 'POST',
+      jsonBody: <String, dynamic>{
+        'account': studentAccount.trim(),
+        'password': studentPassword,
+        'chooseStuId': chooseStudentId.trim(),
+      },
+    );
+    if (!_isCodeOk(res.body['code'])) {
+      throw Exception(
+        strOf(res.body['msg'], '按学生账号绑定失败 (code=${res.body['code']})'),
       );
+    }
+    invalidateCache(account.id);
+    return fetchDashboard(account, allowCache: false);
+  }
 
-      final pair = await Future.wait([
-        _hfsFetch(account, '/v3/exam/list?start=0')
-            .then((r) => r.body)
-            .catchError((_) => <String, dynamic>{}),
-        _hfsFetch(account, '/v2/wrong-items/overview')
-            .then((r) => r.body)
-            .catchError((_) => <String, dynamic>{}),
-      ]);
-
-      final examIds = <String>{};
-      final exData = pair[0]['data'];
-      final rList = (exData is Map && exData['list'] is List)
-          ? (exData['list'] as List)
-          : (exData is List ? exData : const []);
-      for (final item in rList) {
-        if (item is Map) {
-          final id = strOf(item['examId']).isNotEmpty
-              ? strOf(item['examId'])
-              : strOf(item['id']);
-          if (id.isNotEmpty) examIds.add(id);
+  /// Fetch province/city/county hierarchy (`GET /v2/region`)
+  Future<List<RegionProvinceItem>> fetchRegions(HfsAccount account) async {
+    if (_regionCache != null && _regionCache!.isNotEmpty) {
+      return _regionCache!;
+    }
+    await ensureAccount(account);
+    final res = await _hfsFetch(account, '/v2/region');
+    if (!_isCodeOk(res.body['code']) || res.body['data'] is! List) {
+      throw Exception(strOf(res.body['msg'], '获取省市区列表失败'));
+    }
+    final provinces = <RegionProvinceItem>[];
+    for (final rp in res.body['data'] as List) {
+      if (rp is! Map) continue;
+      final pm = Map<String, dynamic>.from(rp);
+      final pName = strOf(pm['name']);
+      if (pName.isEmpty) continue;
+      final cities = <RegionCityItem>[];
+      if (pm['cities'] is List) {
+        for (final rc in pm['cities'] as List) {
+          if (rc is! Map) continue;
+          final cm = Map<String, dynamic>.from(rc);
+          final cName = strOf(cm['name']);
+          final counties = <String>[];
+          if (cm['counties'] is List) {
+            for (final rco in cm['counties'] as List) {
+              if (rco is Map && strOf(rco['name']).isNotEmpty) {
+                counties.add(strOf(rco['name']));
+              }
+            }
+          }
+          if (cName.isNotEmpty) {
+            cities.add(RegionCityItem(name: cName, counties: counties));
+          }
         }
       }
-      if (pair[1]['data'] is List) {
-        for (final subj in pair[1]['data'] as List) {
-          if (subj is Map && subj['examList'] is List) {
-            for (final ex in subj['examList'] as List) {
-              if (ex is Map) {
-                final id = strOf(ex['examId']);
-                if (id.isNotEmpty) examIds.add(id);
+      provinces.add(RegionProvinceItem(name: pName, cities: cities));
+    }
+    _regionCache = provinces;
+    return provinces;
+  }
+
+  /// Fetch schools in region (`GET /v2/region/schools`)
+  Future<List<RegionSchoolItem>> fetchRegionSchools({
+    required HfsAccount account,
+    required String province,
+    required String city,
+    required String county,
+  }) async {
+    await ensureAccount(account);
+    final path =
+        '/v2/region/schools?province=${Uri.encodeQueryComponent(province)}&city=${Uri.encodeQueryComponent(city)}&county=${Uri.encodeQueryComponent(county)}';
+    final res = await _hfsFetch(account, path);
+    if (!_isCodeOk(res.body['code']) || res.body['data'] is! List) {
+      throw Exception(strOf(res.body['msg'], '获取学校列表失败'));
+    }
+    return (res.body['data'] as List)
+        .whereType<Map>()
+        .map((e) => RegionSchoolItem.fromJson(Map<String, dynamic>.from(e)))
+        .where((s) => s.id.isNotEmpty && s.name.isNotEmpty)
+        .toList();
+  }
+
+  /// Match students by schoolId + grade + studentName (`GET /v2/native-users/matched-students`)
+  Future<List<SchoolMatchedStudent>> matchStudentsBySchool({
+    required HfsAccount account,
+    required String schoolId,
+    required String studentName,
+    String grade = '',
+  }) async {
+    await ensureAccount(account);
+    var path =
+        '/v2/native-users/matched-students?schoolId=${Uri.encodeQueryComponent(schoolId.trim())}&studentName=${Uri.encodeQueryComponent(studentName.trim())}';
+    if (grade.trim().isNotEmpty) {
+      path += '&grade=${Uri.encodeQueryComponent(grade.trim())}';
+    }
+    final res = await _hfsFetch(account, path);
+    final code = intOf(res.body['code'], -1);
+    if (code == 1) {
+      throw Exception('在该学校下未找到同名学生，请核对学校、年级与姓名');
+    }
+    if (code != 0 || res.body['data'] is! List) {
+      throw Exception(strOf(res.body['msg'], '查询学校学生失败'));
+    }
+    return (res.body['data'] as List)
+        .whereType<Map>()
+        .map((e) => SchoolMatchedStudent.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  /// Bind student directly by internal `studentId` (`POST /v2/native-users/bind-students`)
+  Future<DashboardData> bindStudentById({
+    required HfsAccount account,
+    required String studentId,
+  }) async {
+    await hydrateAccountStudents(account);
+    final res = await _hfsFetch(
+      account,
+      '/v2/native-users/bind-students',
+      method: 'POST',
+      jsonBody: <String, dynamic>{
+        'studentId': studentId.trim(),
+      },
+    );
+    if (!_isCodeOk(res.body['code'])) {
+      throw Exception(
+        strOf(res.body['msg'], '按学生 ID 绑定失败 (code=${res.body['code']})'),
+      );
+    }
+    account.desiredStudentId = studentId.trim();
+    await ensureAccount(account, targetStudentId: studentId.trim());
+    account.activeStudentId = studentId.trim();
+    invalidateCache(account.id);
+    return fetchDashboard(account, allowCache: false);
+  }
+
+  /// Fetch full wrong-items details for a subject + exam (`GET /v2/wrong-items/exam-items`)
+  /// Works for ALL bound students without VIP lock!
+  Future<List<WrongQuestionItem>> fetchWrongExamItems({
+    required HfsAccount account,
+    required String studentId,
+    required String subject,
+    required String examId,
+    bool allowCache = true,
+  }) async {
+    return _withAccountLock(account.id, () async {
+      final cacheKey = '${account.id}:$studentId:$subject:$examId';
+      if (allowCache) {
+        final hit = _wrongExamCache[cacheKey];
+        if (hit != null && DateTime.now().isBefore(hit.expiresAt)) {
+          return hit.items;
+        }
+      }
+      await ensureAccount(account, targetStudentId: studentId);
+
+      Future<({int status, Map<String, dynamic> body})> queryFor(
+        String subjName,
+      ) {
+        final p =
+            '/v2/wrong-items/exam-items?subject=${Uri.encodeQueryComponent(subjName)}&examId=${Uri.encodeQueryComponent(examId)}';
+        return _hfsFetch(account, p);
+      }
+
+      var res = await queryFor(subject);
+      if ((!_isCodeOk(res.body['code']) ||
+              res.body['data'] is! List ||
+              (res.body['data'] as List).isEmpty) &&
+          subject.contains('与社会')) {
+        res = await queryFor(subject.replaceAll('与社会', ''));
+      }
+      if (!_isCodeOk(res.body['code'])) {
+        throw Exception(strOf(res.body['msg'], '拉取错题本详情失败'));
+      }
+
+      List<String> validOssUrls(dynamic raw) {
+        if (raw == null) return const <String>[];
+        final out = <String>[];
+        void addOne(dynamic candidate) {
+          if (candidate == null) return;
+          if (candidate is List) {
+            for (final sub in candidate) {
+              addOne(sub);
+            }
+            return;
+          }
+          if (candidate is Map) {
+            final m = Map<String, dynamic>.from(candidate);
+            addOne(m['url'] ?? m['contentPic'] ?? m['answerPic'] ?? m['pic']);
+            return;
+          }
+          final u = strOf(candidate);
+          if (u.isEmpty) return;
+          final uri = Uri.tryParse(u);
+          if (uri != null &&
+              uri.scheme == 'https' &&
+              uri.host == kHfsOssHost &&
+              !out.contains(u)) {
+            out.add(u);
+          }
+        }
+
+        addOne(raw);
+        return out;
+      }
+
+      final rawList =
+          (res.body['data'] is List) ? (res.body['data'] as List) : const [];
+      final items = <WrongQuestionItem>[];
+      for (final raw in rawList) {
+        if (raw is! Map) continue;
+        final m = Map<String, dynamic>.from(raw);
+        final ks = <String>[];
+        if (m['knowledges'] is List) {
+          for (final k in m['knowledges'] as List) {
+            if (k is Map && strOf(k['name']).isNotEmpty) {
+              ks.add(strOf(k['name']));
+            }
+          }
+        }
+        items.add(
+          WrongQuestionItem(
+            questionId: strOf(m['questionId']),
+            shortName: strOf(m['shortName'], '题目'),
+            examId: strOf(m['examId'], examId),
+            paperId: strOf(m['paperId']),
+            examName: strOf(m['examName'], '考试'),
+            examTime: intOf(m['examTime']),
+            score: numOf(m['score']),
+            myScore: numOf(m['myScore']),
+            classAvgScore: numOf(m['classAvgScore']),
+            type: intOf(m['type'], 1),
+            style: strOf(m['style'], intOf(m['type'], 1) == 2 ? '客观题' : '主观题'),
+            myAnswer: strOf(m['myAnswer']),
+            answer: strOf(m['answer']),
+            stemPictures: validOssUrls(m['pictures']),
+            myAnswerPictures: validOssUrls(m['myAnswers']),
+            xbAnswerPictures: validOssUrls(m['xbAnswers']),
+            knowledges: ks,
+          ),
+        );
+      }
+
+      _wrongExamCache[cacheKey] = (
+        items: items,
+        expiresAt: DateTime.now().add(const Duration(minutes: 15)),
+      );
+      return items;
+    });
+  }
+
+  /// Fetch wrong questions for a semester range (`GET /v2/wrong-items/items`)
+  Future<List<WrongQuestionItem>> fetchWrongSemesterItems({
+    required HfsAccount account,
+    required String studentId,
+    required String subject,
+    required int startMs,
+    required int endMs,
+    bool allowCache = true,
+  }) async {
+    return _withAccountLock(account.id, () async {
+      final cacheKey =
+          '${account.id}:$studentId:$subject:sem:$startMs:$endMs';
+      if (allowCache) {
+        final hit = _wrongExamCache[cacheKey];
+        if (hit != null && DateTime.now().isBefore(hit.expiresAt)) {
+          return hit.items;
+        }
+      }
+      await ensureAccount(account, targetStudentId: studentId);
+      final p =
+          '/v2/wrong-items/items?subject=${Uri.encodeQueryComponent(subject)}&start=$startMs&end=$endMs&pageIndex=1&pageSize=50';
+      final res = await _hfsFetch(account, p);
+      if (!_isCodeOk(res.body['code'])) {
+        throw Exception(strOf(res.body['msg'], '按学期拉取错题失败'));
+      }
+
+      List<String> validOssUrls(dynamic raw) {
+        if (raw == null) return const <String>[];
+        final out = <String>[];
+        void addOne(dynamic candidate) {
+          if (candidate == null) return;
+          if (candidate is List) {
+            for (final sub in candidate) {
+              addOne(sub);
+            }
+            return;
+          }
+          if (candidate is Map) {
+            final m = Map<String, dynamic>.from(candidate);
+            addOne(m['url'] ?? m['contentPic'] ?? m['answerPic'] ?? m['pic']);
+            return;
+          }
+          final u = strOf(candidate);
+          if (u.isEmpty) return;
+          final uri = Uri.tryParse(u);
+          if (uri != null &&
+              uri.scheme == 'https' &&
+              uri.host == kHfsOssHost &&
+              !out.contains(u)) {
+            out.add(u);
+          }
+        }
+
+        addOne(raw);
+        return out;
+      }
+
+      final dataField = res.body['data'];
+      final List<dynamic> rawList = dataField is List
+          ? dataField
+          : (dataField is Map && dataField['items'] is List
+              ? (dataField['items'] as List)
+              : const []);
+      final items = <WrongQuestionItem>[];
+      for (final raw in rawList) {
+        if (raw is! Map) continue;
+        final m = Map<String, dynamic>.from(raw);
+        final ks = <String>[];
+        if (m['knowledges'] is List) {
+          for (final k in m['knowledges'] as List) {
+            if (k is Map && strOf(k['name']).isNotEmpty) {
+              ks.add(strOf(k['name']));
+            }
+          }
+        }
+        items.add(
+          WrongQuestionItem(
+            questionId: strOf(m['questionId'] ?? m['id']),
+            shortName: strOf(m['shortName'] ?? m['questionNum'], '题目'),
+            examId: strOf(m['examId']),
+            paperId: strOf(m['paperId']),
+            examName: strOf(m['examName'], '学期错题'),
+            examTime: intOf(m['examTime'] ?? m['time']),
+            score: numOf(m['score'] ?? m['manfen']),
+            myScore: numOf(m['myScore']),
+            classAvgScore: numOf(m['classAvgScore']),
+            type: intOf(m['type'], 1),
+            style: strOf(m['style'], intOf(m['type'], 1) == 2 ? '客观题' : '主观题'),
+            myAnswer: strOf(m['myAnswer']),
+            answer: strOf(m['answer']),
+            stemPictures: validOssUrls(m['pictures'] ?? m['kbQuestion']),
+            myAnswerPictures: validOssUrls(m['myAnswers'] ?? m['pics']),
+            xbAnswerPictures: validOssUrls(m['xbAnswers']),
+            knowledges: ks,
+          ),
+        );
+      }
+
+      _wrongExamCache[cacheKey] = (
+        items: items,
+        expiresAt: DateTime.now().add(const Duration(minutes: 15)),
+      );
+      return items;
+    });
+  }
+
+  /// Fetch class roster (`GET /v2/students/classmates`)
+  Future<List<ClassmateBindEntry>> fetchClassmates(
+    HfsAccount account, {
+    String studentId = '',
+  }) async {
+    return _withAccountLock(account.id, () async {
+      await ensureAccount(account, targetStudentId: studentId);
+      final res = await _hfsFetch(account, '/v2/students/classmates');
+      if (!_isCodeOk(res.body['code']) || res.body['data'] is! List) {
+        throw Exception(strOf(res.body['msg'], '获取同班同学名册失败'));
+      }
+      return (res.body['data'] as List)
+          .whereType<Map>()
+          .map((e) => ClassmateBindEntry.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    });
+  }
+
+  /// Execute read-only upstream diagnostic endpoint (`GET <path>`)
+  Future<Map<String, dynamic>> fetchDiagnosticEndpoint(
+    HfsAccount account,
+    String path,
+  ) async {
+    return _withAccountLock(account.id, () async {
+      await ensureAccount(account);
+      final res = await _hfsFetch(account, path);
+      return res.body;
+    });
+  }
+
+  Future<void> probeAllStudents(
+    HfsAccount account, {
+    bool forceRefreshAll = false,
+  }) async {
+    return _withAccountLock(account.id, () async {
+      await _hydrateAccountStudentsUnlocked(account);
+      final origStuId = account.activeStudentId;
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      for (final s in account.students) {
+        final sid = s.studentId;
+        if (sid.isEmpty) continue;
+        final existingSnap = account.studentSnapshots[sid];
+        if (!forceRefreshAll &&
+            existingSnap != null &&
+            existingSnap.examId.isNotEmpty &&
+            (now - existingSnap.updatedAt) < 10 * 60 * 1000) {
+          continue;
+        }
+
+        await _hfsFetch(
+          account,
+          '/v2/user-center/sessions',
+          method: 'POST',
+          jsonBody: <String, dynamic>{'deviceType': 1, 'studentId': sid},
+        );
+
+        final pair = await Future.wait([
+          _hfsFetch(account, '/v3/exam/list?start=0')
+              .then((r) => r.body)
+              .catchError((_) => <String, dynamic>{}),
+          _hfsFetch(account, '/v2/wrong-items/overview')
+              .then((r) => r.body)
+              .catchError((_) => <String, dynamic>{}),
+        ]);
+
+        final examIds = <String>{};
+        final exData = pair[0]['data'];
+        final rList = (exData is Map && exData['list'] is List)
+            ? (exData['list'] as List)
+            : (exData is List ? exData : const []);
+        for (final item in rList) {
+          if (item is Map) {
+            final id = strOf(item['examId']).isNotEmpty
+                ? strOf(item['examId'])
+                : strOf(item['id']);
+            if (id.isNotEmpty) examIds.add(id);
+          }
+        }
+        if (pair[1]['data'] is List) {
+          for (final subj in pair[1]['data'] as List) {
+            if (subj is Map && subj['examList'] is List) {
+              for (final ex in subj['examList'] as List) {
+                if (ex is Map) {
+                  final id = strOf(ex['examId']);
+                  if (id.isNotEmpty) examIds.add(id);
+                }
               }
             }
           }
         }
+
+        if (examIds.isNotEmpty) {
+          final sorted = examIds.toList()
+            ..sort((a, b) => intOf(b).compareTo(intOf(a)));
+          final latestId = sorted.first;
+          final detailPair = await Future.wait([
+            _hfsFetch(account, '/v3/exam/$latestId/overview')
+                .then((r) => r.body)
+                .catchError((_) => <String, dynamic>{}),
+            _hfsFetch(account, '/v3/exam/$latestId/brief?withSubPapers=1')
+                .then((r) => r.body)
+                .catchError((_) => <String, dynamic>{}),
+          ]);
+          final ov = (detailPair[0]['data'] is Map)
+              ? Map<String, dynamic>.from(detailPair[0]['data'] as Map)
+              : <String, dynamic>{};
+          final br = (detailPair[1]['data'] is Map)
+              ? Map<String, dynamic>.from(detailPair[1]['data'] as Map)
+              : <String, dynamic>{};
+          final rawPapers =
+              (ov['papers'] is List && (ov['papers'] as List).isNotEmpty)
+                  ? (ov['papers'] as List)
+                  : ((br['papers'] is List) ? (br['papers'] as List) : const []);
+          final sc = numOf(ov['score'] ?? br['score']);
+          final mf = numOf(ov['manfen'] ?? br['manfen']);
+          final ratio = mf > 0 ? round1((sc / mf) * 100) : null;
+
+          account.studentSnapshots[sid] = StudentSnapshot(
+            examId: latestId,
+            examName: strOf(ov['name'], strOf(br['name'], '考试')),
+            examTime: intOf(ov['time'] ?? br['time']),
+            scoreS: strOf(ov['scoreS'], strOf(br['scoreS'], '$sc')),
+            manfen: mf,
+            ratio: ratio,
+            isPartial: rawPapers.isNotEmpty && rawPapers.length < 5,
+            reportedPaperCount: rawPapers.length,
+            classRankS: strOf(ov['classRankS']),
+            gradeRankS: strOf(ov['gradeRankS']),
+            updatedAt: DateTime.now().millisecondsSinceEpoch,
+          );
+        }
       }
 
-      if (examIds.isNotEmpty) {
-        final sorted = examIds.toList()
-          ..sort((a, b) => intOf(b).compareTo(intOf(a)));
-        final latestId = sorted.first;
-        final detailPair = await Future.wait([
-          _hfsFetch(account, '/v3/exam/$latestId/overview')
-              .then((r) => r.body)
-              .catchError((_) => <String, dynamic>{}),
-          _hfsFetch(account, '/v3/exam/$latestId/brief?withSubPapers=1')
-              .then((r) => r.body)
-              .catchError((_) => <String, dynamic>{}),
-        ]);
-        final ov = (detailPair[0]['data'] is Map)
-            ? Map<String, dynamic>.from(detailPair[0]['data'] as Map)
-            : <String, dynamic>{};
-        final br = (detailPair[1]['data'] is Map)
-            ? Map<String, dynamic>.from(detailPair[1]['data'] as Map)
-            : <String, dynamic>{};
-        final rawPapers = (ov['papers'] is List && (ov['papers'] as List).isNotEmpty)
-            ? (ov['papers'] as List)
-            : ((br['papers'] is List) ? (br['papers'] as List) : const []);
-        final sc = numOf(ov['score'] ?? br['score']);
-        final mf = numOf(ov['manfen'] ?? br['manfen']);
-        final ratio = mf > 0 ? round1((sc / mf) * 100) : null;
-
-        account.studentSnapshots[sid] = StudentSnapshot(
-          examId: latestId,
-          examName: strOf(ov['name'], strOf(br['name'], '考试')),
-          examTime: intOf(ov['time'] ?? br['time']),
-          scoreS: strOf(ov['scoreS'], strOf(br['scoreS'], '$sc')),
-          manfen: mf,
-          ratio: ratio,
-          isPartial: rawPapers.isNotEmpty && rawPapers.length < 5,
-          reportedPaperCount: rawPapers.length,
-          classRankS: strOf(ov['classRankS']),
-          gradeRankS: strOf(ov['gradeRankS']),
-          updatedAt: DateTime.now().millisecondsSinceEpoch,
+      final restoreStuId = origStuId.isNotEmpty
+          ? origStuId
+          : (account.desiredStudentId.isNotEmpty
+              ? account.desiredStudentId
+              : (account.students.isNotEmpty
+                  ? account.students.first.studentId
+                  : ''));
+      if (restoreStuId.isNotEmpty) {
+        await _hfsFetch(
+          account,
+          '/v2/user-center/sessions',
+          method: 'POST',
+          jsonBody: <String, dynamic>{
+            'deviceType': 1,
+            'studentId': restoreStuId,
+          },
         );
+        account.activeStudentId = restoreStuId;
       }
-    }
-
-    if (origStuId.isNotEmpty) {
-      await _hfsFetch(
-        account,
-        '/v2/user-center/sessions',
-        method: 'POST',
-        jsonBody: <String, dynamic>{'deviceType': 1, 'studentId': origStuId},
-      );
-      account.activeStudentId = origStuId;
-    }
-    invalidateCache(account.id);
+    });
   }
 
   Future<PaperInspectionData> fetchPaperInspection({
@@ -742,83 +1560,231 @@ class HfsUpstreamClient {
     required String examId,
     required String paperId,
     required String pid,
+    String subject = '',
   }) async {
-    await ensureAccount(account, targetStudentId: studentId);
-    final cleanPaperId =
-        paperId.contains(':') ? paperId.split(':').last : paperId;
-    final cleanPid = pid.contains(':') ? pid.split(':').last : pid;
+    return _withAccountLock(account.id, () async {
+      await ensureAccount(account, targetStudentId: studentId);
+      final cleanPaperId =
+          paperId.contains(':') ? paperId.split(':').last : paperId;
+      final cleanPid = pid.contains(':') ? pid.split(':').last : pid;
 
-    final path =
-        '/v3/exam/${Uri.encodeComponent(examId)}/papers/${Uri.encodeComponent(cleanPaperId)}/answer-picture?pid=${Uri.encodeQueryComponent(cleanPid)}';
-    final res = await _hfsFetch(account, path);
-    if (!_isCodeOk(res.body['code'])) {
-      throw Exception(strOf(res.body['msg'], '调阅答题卡失败'));
-    }
+      final answerPath =
+          '/v3/exam/${Uri.encodeComponent(examId)}/papers/${Uri.encodeComponent(cleanPaperId)}/answer-picture?pid=${Uri.encodeQueryComponent(cleanPid)}';
+      final qDetailPath =
+          '/v3/exam/${Uri.encodeComponent(examId)}/papers/${Uri.encodeComponent(cleanPaperId)}/question-detail';
 
-    final source = (res.body['data'] is Map)
-        ? Map<String, dynamic>.from(res.body['data'] as Map)
-        : <String, dynamic>{};
+      final futures = <Future<Map<String, dynamic>>>[
+        _hfsFetch(account, answerPath).then((r) => r.body),
+        _hfsFetch(account, qDetailPath)
+            .then((r) => r.body)
+            .catchError((_) => <String, dynamic>{}),
+        if (subject.trim().isNotEmpty)
+          _hfsFetch(
+            account,
+            '/v2/wrong-items/exam-items?subject=${Uri.encodeQueryComponent(subject.trim())}&examId=${Uri.encodeQueryComponent(examId)}',
+          ).then((r) => r.body).catchError((_) => <String, dynamic>{}),
+        if (subject.contains('与社会'))
+          _hfsFetch(
+            account,
+            '/v2/wrong-items/exam-items?subject=${Uri.encodeQueryComponent(subject.replaceAll('与社会', '').trim())}&examId=${Uri.encodeQueryComponent(examId)}',
+          ).then((r) => r.body).catchError((_) => <String, dynamic>{}),
+      ];
 
-    List<String> validOssUrls(dynamic items) {
-      if (items is! List) return const <String>[];
-      final out = <String>[];
-      for (final it in items) {
-        final u = strOf(it);
-        if (u.isEmpty) continue;
-        final uri = Uri.tryParse(u);
-        if (uri != null && uri.scheme == 'https' && uri.host == kHfsOssHost) {
-          out.add(u);
-        }
+      final resList = await Future.wait(futures);
+      final ansBody = resList[0];
+      if (!_isCodeOk(ansBody['code'])) {
+        throw Exception(strOf(ansBody['msg'], '调阅答题卡失败'));
       }
-      return out;
-    }
 
-    final originalPages = validOssUrls(source['paperPic']);
-    final answerPages = validOssUrls(source['url']);
-    final overlayCalc = _buildPaperOverlays(source);
+      final source = (ansBody['data'] is Map)
+          ? Map<String, dynamic>.from(ansBody['data'] as Map)
+          : <String, dynamic>{};
 
-    final rawQs =
-        (source['questions'] is List) ? (source['questions'] as List) : const [];
-    final questions = <QuestionDetailItem>[];
-    for (final rq in rawQs) {
-      if (rq is! Map) continue;
-      final qm = Map<String, dynamic>.from(rq);
-      final ks = <String>[];
-      if (qm['knowledges'] is List) {
-        for (final k in qm['knowledges'] as List) {
-          if (k is Map && strOf(k['name']).isNotEmpty) {
-            ks.add(strOf(k['name']));
+      List<String> validOssUrls(dynamic items) {
+        if (items == null) return const <String>[];
+        final out = <String>[];
+        void addOne(dynamic candidate) {
+          if (candidate == null) return;
+          if (candidate is List) {
+            for (final sub in candidate) {
+              addOne(sub);
+            }
+            return;
+          }
+          if (candidate is Map) {
+            final m = Map<String, dynamic>.from(candidate);
+            addOne(m['url'] ?? m['contentPic'] ?? m['answerPic'] ?? m['pic']);
+            return;
+          }
+          final u = strOf(candidate);
+          if (u.isEmpty) return;
+          final uri = Uri.tryParse(u);
+          if (uri != null &&
+              uri.scheme == 'https' &&
+              uri.host == kHfsOssHost &&
+              !out.contains(u)) {
+            out.add(u);
+          }
+        }
+
+        addOne(items);
+        return out;
+      }
+
+      // Collect origin question stem pictures & xbAnswers from question-detail and wrong-items/exam-items
+      final stemByQId = <String, List<String>>{};
+      final stemByQName = <String, List<String>>{};
+      final xbByQId = <String, List<String>>{};
+      final xbByQName = <String, List<String>>{};
+      final myCropByQName = <String, List<String>>{};
+      final knowledgeByQName = <String, List<String>>{};
+
+      void mergeStem(String qid, String qName, List<String> urls) {
+        if (urls.isEmpty) return;
+        if (qid.isNotEmpty) {
+          final list = stemByQId.putIfAbsent(qid, () => []);
+          for (final u in urls) {
+            if (!list.contains(u)) list.add(u);
+          }
+        }
+        if (qName.isNotEmpty) {
+          final list = stemByQName.putIfAbsent(qName, () => []);
+          for (final u in urls) {
+            if (!list.contains(u)) list.add(u);
           }
         }
       }
-      questions.add(
-        QuestionDetailItem(
-          id: strOf(qm['id']),
-          name: strOf(qm['name']),
-          score: numOf(qm['score']),
-          scoreS: strOf(qm['scoreS'], '${numOf(qm['score'])}'),
-          manfen: numOf(qm['manfen']),
-          type: intOf(qm['type'], 1),
-          myAnswer: strOf(qm['myAnswer']),
-          answer: strOf(qm['answer']),
-          cropUrls: validOssUrls(qm['url']),
-          knowledges: ks,
-        ),
-      );
-    }
 
-    return PaperInspectionData(
-      studentId: account.activeStudentId.isNotEmpty
-          ? account.activeStudentId
-          : studentId,
-      totalScore: overlayCalc.totalScore,
-      objectScore: overlayCalc.objectScore,
-      subjectScore: overlayCalc.subjectScore,
-      originalPages: originalPages,
-      answerPages: answerPages,
-      pageOverlays: overlayCalc.pageOverlays,
-      questions: questions,
-    );
+      void mergeXb(String qid, String qName, List<String> urls) {
+        if (urls.isEmpty) return;
+        if (qid.isNotEmpty) {
+          final list = xbByQId.putIfAbsent(qid, () => []);
+          for (final u in urls) {
+            if (!list.contains(u)) list.add(u);
+          }
+        }
+        if (qName.isNotEmpty) {
+          final list = xbByQName.putIfAbsent(qName, () => []);
+          for (final u in urls) {
+            if (!list.contains(u)) list.add(u);
+          }
+        }
+      }
+
+      final qdData = (resList[1]['data'] is Map)
+          ? Map<String, dynamic>.from(resList[1]['data'] as Map)
+          : const <String, dynamic>{};
+      if (qdData['questionList'] is List) {
+        for (final rq in qdData['questionList'] as List) {
+          if (rq is! Map) continue;
+          final m = Map<String, dynamic>.from(rq);
+          final qid = strOf(m['id']);
+          final qName = strOf(m['name']);
+          mergeStem(qid, qName, validOssUrls(m['pictures']));
+          mergeXb(qid, qName, validOssUrls(m['xbAnswerPics']));
+        }
+      }
+
+      for (var idx = 2; idx < resList.length; idx++) {
+        final wiBody = resList[idx];
+        if (wiBody['data'] is List) {
+          for (final rw in wiBody['data'] as List) {
+            if (rw is! Map) continue;
+            final m = Map<String, dynamic>.from(rw);
+            final qid = strOf(m['questionId']);
+            final qName = strOf(m['shortName']);
+            mergeStem(qid, qName, validOssUrls(m['pictures']));
+            mergeXb(qid, qName, validOssUrls(m['xbAnswers']));
+            final myAns = validOssUrls(m['myAnswers']);
+            if (qName.isNotEmpty && myAns.isNotEmpty) {
+              myCropByQName[qName] = myAns;
+            }
+            if (qName.isNotEmpty && m['knowledges'] is List) {
+              final ks = <String>[];
+              for (final k in m['knowledges'] as List) {
+                if (k is Map && strOf(k['name']).isNotEmpty) {
+                  ks.add(strOf(k['name']));
+                }
+              }
+              if (ks.isNotEmpty) knowledgeByQName[qName] = ks;
+            }
+          }
+        }
+      }
+
+      final originalPages = validOssUrls(source['paperPic']);
+      final answerPages = validOssUrls(source['url']);
+      final overlayCalc = _buildPaperOverlays(source);
+
+      final rawQs = (source['questions'] is List)
+          ? (source['questions'] as List)
+          : const [];
+      final questions = <QuestionDetailItem>[];
+      for (final rq in rawQs) {
+        if (rq is! Map) continue;
+        final qm = Map<String, dynamic>.from(rq);
+        final qid = strOf(qm['id']);
+        final qName = strOf(qm['name']);
+        final ks = <String>[];
+        if (qm['knowledges'] is List) {
+          for (final k in qm['knowledges'] as List) {
+            if (k is Map && strOf(k['name']).isNotEmpty) {
+              ks.add(strOf(k['name']));
+            }
+          }
+        }
+        if (ks.isEmpty && knowledgeByQName.containsKey(qName)) {
+          ks.addAll(knowledgeByQName[qName]!);
+        }
+
+        final directStems = validOssUrls(qm['pictures']);
+        final stems = <String>{
+          ...directStems,
+          ...?stemByQId[qid],
+          ...?stemByQName[qName],
+        }.toList();
+
+        final crops = validOssUrls(qm['url']);
+        final mergedCrops = crops.isNotEmpty
+            ? crops
+            : (myCropByQName[qName] ?? const <String>[]);
+
+        final xbList = <String>{
+          ...?xbByQId[qid],
+          ...?xbByQName[qName],
+        }.toList();
+
+        questions.add(
+          QuestionDetailItem(
+            id: qid,
+            name: qName,
+            score: numOf(qm['score']),
+            scoreS: strOf(qm['scoreS'], '${numOf(qm['score'])}'),
+            manfen: numOf(qm['manfen']),
+            type: intOf(qm['type'], 1),
+            myAnswer: strOf(qm['myAnswer']),
+            answer: strOf(qm['answer']),
+            stemUrls: stems,
+            cropUrls: mergedCrops,
+            xbAnswerUrls: xbList,
+            knowledges: ks,
+          ),
+        );
+      }
+
+      return PaperInspectionData(
+        studentId: account.activeStudentId.isNotEmpty
+            ? account.activeStudentId
+            : studentId,
+        totalScore: overlayCalc.totalScore,
+        objectScore: overlayCalc.objectScore,
+        subjectScore: overlayCalc.subjectScore,
+        originalPages: originalPages,
+        answerPages: answerPages,
+        pageOverlays: overlayCalc.pageOverlays,
+        questions: questions,
+      );
+    });
   }
 
   Future<Uint8List> fetchOssImageBytes(String imageUrl) async {
@@ -831,20 +1797,26 @@ class HfsUpstreamClient {
       throw StateError('图片来源未获允许 (仅允许 https://$kHfsOssHost)');
     }
     final resp = await _http
-        .get(uri, headers: const {'Accept': 'image/*,*/*;q=0.8'})
+        .get(
+          uri,
+          headers: const {
+            'Accept': 'image/*,*/*;q=0.8',
+            'User-Agent': 'YX Android 14',
+          },
+        )
         .timeout(const Duration(seconds: 25));
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception('答题卡原图下载失败 (HTTP ${resp.statusCode})');
+      throw Exception('原图下载失败 (HTTP ${resp.statusCode})');
     }
     if (resp.bodyBytes.length > 20 * 1024 * 1024) {
       throw Exception('图片体积超过 20MB 安全上限');
     }
-    if (_imgCache.length >= 48) {
+    if (_imgCache.length >= 64) {
       _imgCache.remove(_imgCache.keys.first);
     }
     _imgCache[imageUrl] = (
       bytes: resp.bodyBytes,
-      expiresAt: DateTime.now().add(const Duration(minutes: 10)),
+      expiresAt: DateTime.now().add(const Duration(minutes: 15)),
     );
     return resp.bodyBytes;
   }
@@ -961,11 +1933,21 @@ class HfsUpstreamClient {
         final meta = _parseCropMeta(rawUrl);
         if (meta == null) continue;
         final key = _normalizeImageKey(rawUrl);
-        var pIdx = 0;
+        var pIdx = -1;
         for (var idx = 0; idx < pageKeys.length; idx++) {
           if (pageKeys[idx] == key) {
             pIdx = idx;
             break;
+          }
+        }
+        if (pIdx < 0) {
+          final fallbackPage = intOf(q['pageIndex'] ?? q['index'], -1);
+          if (fallbackPage >= 0 && fallbackPage < pageUrls.length) {
+            pIdx = fallbackPage;
+          } else if (pageUrls.length == 1) {
+            pIdx = 0;
+          } else {
+            continue;
           }
         }
         final bKey =

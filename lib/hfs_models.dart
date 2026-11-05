@@ -71,6 +71,57 @@ String formatDateMs(int ms) {
   return '$y-$m-$d';
 }
 
+class AppSettings {
+  final int maxExamsToHydrate;
+  final int examConcurrency;
+  final bool defaultGradingOverlay;
+  final bool autoHydrateOnSwitch;
+  final double inspectorWidth;
+
+  const AppSettings({
+    this.maxExamsToHydrate = 10,
+    this.examConcurrency = 4,
+    this.defaultGradingOverlay = true,
+    this.autoHydrateOnSwitch = false,
+    this.inspectorWidth = 460.0,
+  });
+
+  AppSettings copyWith({
+    int? maxExamsToHydrate,
+    int? examConcurrency,
+    bool? defaultGradingOverlay,
+    bool? autoHydrateOnSwitch,
+    double? inspectorWidth,
+  }) {
+    return AppSettings(
+      maxExamsToHydrate: (maxExamsToHydrate ?? this.maxExamsToHydrate).clamp(3, 30),
+      examConcurrency: (examConcurrency ?? this.examConcurrency).clamp(1, 8),
+      defaultGradingOverlay: defaultGradingOverlay ?? this.defaultGradingOverlay,
+      autoHydrateOnSwitch: autoHydrateOnSwitch ?? this.autoHydrateOnSwitch,
+      inspectorWidth: (inspectorWidth ?? this.inspectorWidth).clamp(360.0, 680.0),
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'maxExamsToHydrate': maxExamsToHydrate,
+        'examConcurrency': examConcurrency,
+        'defaultGradingOverlay': defaultGradingOverlay,
+        'autoHydrateOnSwitch': autoHydrateOnSwitch,
+        'inspectorWidth': inspectorWidth,
+      };
+
+  factory AppSettings.fromJson(Map<String, dynamic> m) {
+    return AppSettings(
+      maxExamsToHydrate: intOf(m['maxExamsToHydrate'], 10).clamp(3, 30),
+      examConcurrency: intOf(m['examConcurrency'], 4).clamp(1, 8),
+      defaultGradingOverlay:
+          m['defaultGradingOverlay'] == null ? true : boolOf(m['defaultGradingOverlay']),
+      autoHydrateOnSwitch: boolOf(m['autoHydrateOnSwitch']),
+      inspectorWidth: numOf(m['inspectorWidth'], 460.0).clamp(360.0, 680.0),
+    );
+  }
+}
+
 class StudentSnapshot {
   final String examId;
   final String examName;
@@ -303,6 +354,30 @@ class PaperScore {
     this.ratio,
     this.wrongNum,
   });
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'paperId': paperId,
+        'pid': pid,
+        'subject': subject,
+        'name': name,
+        'score': score,
+        'scoreS': scoreS,
+        'manfen': manfen,
+        'ratio': ratio,
+        'wrongNum': wrongNum,
+      };
+
+  factory PaperScore.fromJson(Map<String, dynamic> m) => PaperScore(
+        paperId: strOf(m['paperId']),
+        pid: strOf(m['pid']),
+        subject: strOf(m['subject']),
+        name: strOf(m['name']),
+        score: numOf(m['score']),
+        scoreS: strOf(m['scoreS'], '0'),
+        manfen: numOf(m['manfen']),
+        ratio: m['ratio'] == null ? null : numOf(m['ratio']),
+        wrongNum: m['wrongNum'] == null ? null : intOf(m['wrongNum']),
+      );
 }
 
 class ExamRecord {
@@ -337,27 +412,193 @@ class ExamRecord {
     required this.totalWrong,
     required this.papers,
   });
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'examId': examId,
+        'studentId': studentId,
+        'name': name,
+        'time': time,
+        'score': score,
+        'scoreS': scoreS,
+        'manfen': manfen,
+        'ratio': ratio,
+        'isPartial': isPartial,
+        'reportedPaperCount': reportedPaperCount,
+        'classRankS': classRankS,
+        'gradeRankS': gradeRankS,
+        'totalWrong': totalWrong,
+        'papers': papers.map((e) => e.toJson()).toList(),
+      };
+
+  factory ExamRecord.fromJson(Map<String, dynamic> m) {
+    final rawPapers = (m['papers'] as List?) ?? const [];
+    return ExamRecord(
+      examId: strOf(m['examId']),
+      studentId: strOf(m['studentId']),
+      name: strOf(m['name'], '考试'),
+      time: intOf(m['time']),
+      score: numOf(m['score']),
+      scoreS: strOf(m['scoreS'], '0'),
+      manfen: numOf(m['manfen']),
+      ratio: m['ratio'] == null ? null : numOf(m['ratio']),
+      isPartial: boolOf(m['isPartial']),
+      reportedPaperCount: intOf(m['reportedPaperCount']),
+      classRankS: strOf(m['classRankS']),
+      gradeRankS: strOf(m['gradeRankS']),
+      totalWrong: intOf(m['totalWrong']),
+      papers: rawPapers
+          .whereType<Map>()
+          .map((e) => PaperScore.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+    );
+  }
 }
 
 class WrongSemesterItem {
   final String name;
+  final int startMs;
+  final int endMs;
   final int wrongNum;
+  final int reviewNum;
 
-  const WrongSemesterItem({required this.name, required this.wrongNum});
+  const WrongSemesterItem({
+    required this.name,
+    this.startMs = 0,
+    this.endMs = 0,
+    required this.wrongNum,
+    this.reviewNum = 0,
+  });
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'name': name,
+        'startMs': startMs,
+        'endMs': endMs,
+        'wrongNum': wrongNum,
+        'reviewNum': reviewNum,
+      };
+
+  factory WrongSemesterItem.fromJson(Map<String, dynamic> m) =>
+      WrongSemesterItem(
+        name: strOf(m['name']),
+        startMs: intOf(m['startMs'] ?? m['start'] ?? m['startTime']),
+        endMs: intOf(m['endMs'] ?? m['end'] ?? m['endTime']),
+        wrongNum: intOf(m['wrongNum'] ?? m['count']),
+        reviewNum: intOf(m['reviewNum']),
+      );
+}
+
+class WrongExamRef {
+  final String examId;
+  final String examName;
+  final int examTime;
+  final int wrongNum;
+  final int reviewNum;
+
+  const WrongExamRef({
+    required this.examId,
+    required this.examName,
+    required this.examTime,
+    required this.wrongNum,
+    this.reviewNum = 0,
+  });
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'examId': examId,
+        'examName': examName,
+        'examTime': examTime,
+        'wrongNum': wrongNum,
+        'reviewNum': reviewNum,
+      };
+
+  factory WrongExamRef.fromJson(Map<String, dynamic> m) => WrongExamRef(
+        examId: strOf(m['examId']),
+        examName: strOf(m['examName'], '考试'),
+        examTime: intOf(m['examTime']),
+        wrongNum: intOf(m['wrongNum']),
+        reviewNum: intOf(m['reviewNum']),
+      );
 }
 
 class WrongSubjectSummary {
   final String subject;
   final int noReview;
   final List<WrongSemesterItem> semesters;
-  final int examCount;
+  final List<WrongExamRef> exams;
 
   const WrongSubjectSummary({
     required this.subject,
     required this.noReview,
     required this.semesters,
-    required this.examCount,
+    required this.exams,
   });
+
+  int get examCount => exams.length;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'subject': subject,
+        'noReview': noReview,
+        'semesters': semesters.map((e) => e.toJson()).toList(),
+        'exams': exams.map((e) => e.toJson()).toList(),
+      };
+
+  factory WrongSubjectSummary.fromJson(Map<String, dynamic> m) {
+    final sems = (m['semesters'] as List?) ?? const [];
+    final exs = (m['exams'] as List?) ?? const [];
+    return WrongSubjectSummary(
+      subject: strOf(m['subject']),
+      noReview: intOf(m['noReview']),
+      semesters: sems
+          .whereType<Map>()
+          .map((e) => WrongSemesterItem.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+      exams: exs
+          .whereType<Map>()
+          .map((e) => WrongExamRef.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+    );
+  }
+}
+
+class WrongQuestionItem {
+  final String questionId;
+  final String shortName;
+  final String examId;
+  final String paperId;
+  final String examName;
+  final int examTime;
+  final double score;
+  final double myScore;
+  final double classAvgScore;
+  final int type; // 2 = 客观题, 1 = 主观题
+  final String style;
+  final String myAnswer;
+  final String answer;
+  final List<String> stemPictures;
+  final List<String> myAnswerPictures;
+  final List<String> xbAnswerPictures;
+  final List<String> knowledges;
+
+  const WrongQuestionItem({
+    required this.questionId,
+    required this.shortName,
+    required this.examId,
+    required this.paperId,
+    required this.examName,
+    required this.examTime,
+    required this.score,
+    required this.myScore,
+    required this.classAvgScore,
+    required this.type,
+    required this.style,
+    required this.myAnswer,
+    required this.answer,
+    required this.stemPictures,
+    required this.myAnswerPictures,
+    required this.xbAnswerPictures,
+    required this.knowledges,
+  });
+
+  double get lostScore => math.max(0, round2(score - myScore));
 }
 
 class DashboardData {
@@ -371,6 +612,12 @@ class DashboardData {
   final int totalSubjects;
   final String uploadRemain;
   final String exportRemain;
+  final Map<String, dynamic> rawProfile;
+  final Map<String, dynamic> rawSnapshot;
+  final Map<String, dynamic> rawPayment;
+  final Map<String, dynamic> rawUnlock;
+  final Map<String, dynamic> rawRights;
+  final Map<String, dynamic> rawSchoolHidden;
 
   const DashboardData({
     required this.account,
@@ -383,6 +630,12 @@ class DashboardData {
     required this.totalSubjects,
     required this.uploadRemain,
     required this.exportRemain,
+    this.rawProfile = const <String, dynamic>{},
+    this.rawSnapshot = const <String, dynamic>{},
+    this.rawPayment = const <String, dynamic>{},
+    this.rawUnlock = const <String, dynamic>{},
+    this.rawRights = const <String, dynamic>{},
+    this.rawSchoolHidden = const <String, dynamic>{},
   });
 
   int get totalWrong =>
@@ -400,6 +653,71 @@ class DashboardData {
       ...set.where((s) => !kSubjectOrder.contains(s)),
     ];
     return ordered;
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'account': account.toJson(),
+        'currentStudent': currentStudent?.toJson(),
+        'exams': exams.map((e) => e.toJson()).toList(),
+        'wrongOverview': wrongOverview.map((e) => e.toJson()).toList(),
+        'isMember': isMember,
+        'isExamMember': isExamMember,
+        'unlockedSubjects': unlockedSubjects,
+        'totalSubjects': totalSubjects,
+        'uploadRemain': uploadRemain,
+        'exportRemain': exportRemain,
+        'rawProfile': rawProfile,
+        'rawSnapshot': rawSnapshot,
+        'rawPayment': rawPayment,
+        'rawUnlock': rawUnlock,
+        'rawRights': rawRights,
+        'rawSchoolHidden': rawSchoolHidden,
+      };
+
+  factory DashboardData.fromJson(HfsAccount account, Map<String, dynamic> m) {
+    final rawExams = (m['exams'] as List?) ?? const [];
+    final rawWrongs = (m['wrongOverview'] as List?) ?? const [];
+    StudentInfo? curStu = account.activeStudent;
+    if (m['currentStudent'] is Map) {
+      curStu = StudentInfo.fromUpstream(
+          Map<String, dynamic>.from(m['currentStudent'] as Map));
+    }
+    return DashboardData(
+      account: account,
+      currentStudent: curStu,
+      exams: rawExams
+          .whereType<Map>()
+          .map((e) => ExamRecord.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+      wrongOverview: rawWrongs
+          .whereType<Map>()
+          .map((e) => WrongSubjectSummary.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+      isMember: boolOf(m['isMember']),
+      isExamMember: boolOf(m['isExamMember']),
+      unlockedSubjects: intOf(m['unlockedSubjects']),
+      totalSubjects: intOf(m['totalSubjects']),
+      uploadRemain: strOf(m['uploadRemain'], '-'),
+      exportRemain: strOf(m['exportRemain'], '-'),
+      rawProfile: m['rawProfile'] is Map
+          ? Map<String, dynamic>.from(m['rawProfile'] as Map)
+          : const <String, dynamic>{},
+      rawSnapshot: m['rawSnapshot'] is Map
+          ? Map<String, dynamic>.from(m['rawSnapshot'] as Map)
+          : const <String, dynamic>{},
+      rawPayment: m['rawPayment'] is Map
+          ? Map<String, dynamic>.from(m['rawPayment'] as Map)
+          : const <String, dynamic>{},
+      rawUnlock: m['rawUnlock'] is Map
+          ? Map<String, dynamic>.from(m['rawUnlock'] as Map)
+          : const <String, dynamic>{},
+      rawRights: m['rawRights'] is Map
+          ? Map<String, dynamic>.from(m['rawRights'] as Map)
+          : const <String, dynamic>{},
+      rawSchoolHidden: m['rawSchoolHidden'] is Map
+          ? Map<String, dynamic>.from(m['rawSchoolHidden'] as Map)
+          : const <String, dynamic>{},
+    );
   }
 }
 
@@ -498,7 +816,9 @@ class QuestionDetailItem {
   final int type;
   final String myAnswer;
   final String answer;
+  final List<String> stemUrls;
   final List<String> cropUrls;
+  final List<String> xbAnswerUrls;
   final List<String> knowledges;
 
   const QuestionDetailItem({
@@ -510,7 +830,9 @@ class QuestionDetailItem {
     required this.type,
     required this.myAnswer,
     required this.answer,
+    this.stemUrls = const <String>[],
     required this.cropUrls,
+    this.xbAnswerUrls = const <String>[],
     required this.knowledges,
   });
 
@@ -542,4 +864,88 @@ class PaperInspectionData {
 
   List<QuestionDetailItem> get lostQuestions =>
       questions.where((q) => q.manfen > 0 && q.score < q.manfen).toList();
+
+  List<QuestionDetailItem> get questionsWithOriginStems =>
+      questions.where((q) => q.stemUrls.isNotEmpty).toList();
+}
+
+class ClassmateBindEntry {
+  final String id;
+  final String name;
+  final int sex;
+  final bool isMember;
+  final bool hasStudentAccount;
+  final bool hasParentAccount;
+
+  const ClassmateBindEntry({
+    required this.id,
+    required this.name,
+    required this.sex,
+    required this.isMember,
+    required this.hasStudentAccount,
+    required this.hasParentAccount,
+  });
+
+  factory ClassmateBindEntry.fromJson(Map<String, dynamic> m) {
+    return ClassmateBindEntry(
+      id: strOf(m['id']),
+      name: strOf(m['name'], '同学'),
+      sex: intOf(m['sex']),
+      isMember: boolOf(m['isMember']),
+      hasStudentAccount: m['bindStudent'] is Map,
+      hasParentAccount: m['bindParent'] is Map,
+    );
+  }
+}
+
+class RegionSchoolItem {
+  final String id;
+  final String name;
+
+  const RegionSchoolItem({required this.id, required this.name});
+
+  factory RegionSchoolItem.fromJson(Map<String, dynamic> m) =>
+      RegionSchoolItem(id: strOf(m['id']), name: strOf(m['name']));
+}
+
+class RegionCityItem {
+  final String name;
+  final List<String> counties;
+
+  const RegionCityItem({required this.name, required this.counties});
+}
+
+class RegionProvinceItem {
+  final String name;
+  final List<RegionCityItem> cities;
+
+  const RegionProvinceItem({required this.name, required this.cities});
+}
+
+class SchoolMatchedStudent {
+  final String id;
+  final String name;
+  final String grade;
+  final String className;
+  final String maskedXuehao;
+  final String maskedKaohao;
+
+  const SchoolMatchedStudent({
+    required this.id,
+    required this.name,
+    required this.grade,
+    required this.className,
+    required this.maskedXuehao,
+    required this.maskedKaohao,
+  });
+
+  factory SchoolMatchedStudent.fromJson(Map<String, dynamic> m) =>
+      SchoolMatchedStudent(
+        id: strOf(m['id']),
+        name: strOf(m['name']),
+        grade: strOf(m['grade']),
+        className: strOf(m['className']),
+        maskedXuehao: strOf(m['maskedXuehao']),
+        maskedKaohao: strOf(m['maskedKaohao']),
+      );
 }
