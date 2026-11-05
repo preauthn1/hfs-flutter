@@ -182,6 +182,7 @@ void main() {
 
     expect(find.byType(NavigationBar), findsNothing);
     expect(find.text('好分数成绩工作台'), findsOneWidget);
-    expect(find.text('历次考试总分与单科矩阵'), findsOneWidget);
+    expect(find.text('总分 历次成绩变化趋势折线图与学科均衡度'), findsOneWidget);
+    expect(find.text('语文 · 试卷与答题卡调阅'), findsOneWidget);
   });
 }

@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'answer_sheet_painter.dart';
 import 'hfs_client.dart';
@@ -401,23 +405,48 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (!isReauth && !widget.isDialog) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(Taste.radiusControl),
+              child: Container(
+                height: 118,
+                decoration: BoxDecoration(
+                  color: Taste.raised,
+                  border: Border.all(color: Taste.border),
+                  borderRadius: BorderRadius.circular(Taste.radiusControl),
+                ),
+                child: Image.asset(
+                  'assets/images/hero_auth_banner.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (ctx, err, st) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           Row(
             children: [
               Container(
-                width: 28,
-                height: 28,
-                alignment: Alignment.center,
+                width: 30,
+                height: 30,
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
                   color: Taste.accent,
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: const Text(
-                  'HFS',
-                  style: TextStyle(
-                    fontFamily: Taste.fontFamily,
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                child: Image.asset(
+                  'assets/images/app_logo.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (ctx, err, st) => const Center(
+                    child: Text(
+                      'HFS',
+                      style: TextStyle(
+                        fontFamily: Taste.fontFamily,
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1572,12 +1601,29 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
               ),
               const Divider(height: 1, color: Taste.border),
               if (overviews.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(24),
+                Padding(
+                  padding: const EdgeInsets.all(24),
                   child: Center(
-                    child: Text(
-                      '当前学生暂无错题本记录',
-                      style: TextStyle(color: Taste.muted),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.asset(
+                            'assets/images/empty_wrong_book.png',
+                            width: 136,
+                            height: 136,
+                            fit: BoxFit.contain,
+                            errorBuilder: (ctx, err, st) =>
+                                const SizedBox.shrink(),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        const Text(
+                          '当前学生暂无错题本记录',
+                          style: TextStyle(color: Taste.muted),
+                        ),
+                      ],
                     ),
                   ),
                 )
@@ -1778,9 +1824,25 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
               borderRadius: BorderRadius.circular(Taste.radiusCard),
               border: Border.all(color: Taste.border),
             ),
-            child: const Text(
-              '本场考试该科目暂无错题明细',
-              style: TextStyle(color: Taste.muted),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.asset(
+                    'assets/images/empty_wrong_book.png',
+                    width: 120,
+                    height: 120,
+                    fit: BoxFit.contain,
+                    errorBuilder: (ctx, err, st) => const SizedBox.shrink(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '本场考试该科目暂无错题明细',
+                  style: TextStyle(color: Taste.muted),
+                ),
+              ],
             ),
           )
         else
@@ -2388,43 +2450,242 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
     }
   }
 
+  Future<String> _saveCredentialFileToDisk(
+    String content, {
+    String? customPath,
+  }) async {
+    final ts = DateTime.now()
+        .toIso8601String()
+        .replaceAll(':', '-')
+        .split('.')
+        .first;
+    final defaultFileName = 'hfs_credentials_$ts.json';
+
+    if (customPath != null && customPath.trim().isNotEmpty) {
+      final f = File(customPath.trim());
+      await f.parent.create(recursive: true);
+      await f.writeAsString(content);
+      return f.path;
+    }
+
+    final candidates = <String>[];
+    final env = Platform.environment;
+    final userProfile = env['USERPROFILE'] ?? '';
+    final home = env['HOME'] ?? '';
+    if (userProfile.isNotEmpty) {
+      candidates.add('$userProfile\\Downloads\\$defaultFileName');
+      candidates.add('$userProfile\\Desktop\\$defaultFileName');
+    }
+    if (home.isNotEmpty) {
+      candidates.add('$home/Downloads/$defaultFileName');
+      candidates.add('$home/Desktop/$defaultFileName');
+      candidates.add('$home/$defaultFileName');
+    }
+    if (Platform.isAndroid) {
+      candidates.add('/sdcard/Download/$defaultFileName');
+      candidates.add('/storage/emulated/0/Download/$defaultFileName');
+    }
+    candidates.add(
+      '${Directory.current.path}${Platform.pathSeparator}$defaultFileName',
+    );
+    candidates.add(
+      '${Directory.systemTemp.path}${Platform.pathSeparator}$defaultFileName',
+    );
+
+    for (final p in candidates) {
+      try {
+        final f = File(p);
+        if (await f.parent.exists()) {
+          await f.writeAsString(content);
+          return f.path;
+        }
+      } catch (_) {}
+    }
+
+    final fallback = File(
+      '${Directory.systemTemp.path}${Platform.pathSeparator}$defaultFileName',
+    );
+    await fallback.writeAsString(content);
+    return fallback.path;
+  }
+
+  Future<void> _exportCredentialFileQuick() async {
+    try {
+      final exported = await widget.onExportConfigJson();
+      final savedPath = await _saveCredentialFileToDisk(exported);
+      await Clipboard.setData(ClipboardData(text: exported));
+      if (!mounted) return;
+      setState(() {
+        _statusMsg = '已导出好分数凭证文件至：$savedPath（并已同步复制到剪贴板）';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _statusMsg = '导出凭证文件失败：$e';
+      });
+    }
+  }
+
   Future<void> _showImportExportModal() async {
     final exported = await widget.onExportConfigJson();
     if (!mounted) return;
     final ctrl = TextEditingController(text: exported);
+    final filePathCtrl = TextEditingController();
+    String? modalFeedback;
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('账号池配置备份与恢复 (JSON)',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-        content: SizedBox(
-          width: 480,
-          child: TextField(
-            controller: ctrl,
-            maxLines: 12,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(),
-              hintText: '粘贴备份的 JSON 配置以恢复多账号…',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => AlertDialog(
+          backgroundColor: Taste.surface,
+          title: const Text(
+            '好分数凭证文件导出与导入 (.json)',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    '包含全部已挂载好分数账号、登录凭证、hfs-session-id Cookie Jar、绑定学生及快照：',
+                    style: TextStyle(fontSize: 12, color: Taste.muted),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 34,
+                          child: TextField(
+                            controller: filePathCtrl,
+                            style: const TextStyle(fontSize: 12),
+                            decoration: InputDecoration(
+                              hintText: '指定凭证文件完整路径（留空则自动存至 Downloads/桌面）',
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              border: OutlineInputBorder(
+                                borderRadius:
+                                    BorderRadius.circular(Taste.radiusControl),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          try {
+                            final saved = await _saveCredentialFileToDisk(
+                              ctrl.text,
+                              customPath: filePathCtrl.text,
+                            );
+                            filePathCtrl.text = saved;
+                            setModalState(() {
+                              modalFeedback = '凭证文件已保存至：$saved';
+                            });
+                          } catch (e) {
+                            setModalState(() {
+                              modalFeedback = '保存文件失败：$e';
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.download_outlined, size: 15),
+                        label: const Text('导出为文件',
+                            style: TextStyle(fontSize: 12)),
+                      ),
+                      const SizedBox(width: 6),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final p = filePathCtrl.text.trim();
+                          if (p.isEmpty) {
+                            setModalState(() {
+                              modalFeedback = '请先在左侧输入框填写要读取的 .json 凭证文件路径';
+                            });
+                            return;
+                          }
+                          try {
+                            final raw = await File(p).readAsString();
+                            ctrl.text = raw;
+                            setModalState(() {
+                              modalFeedback = '已从文件读取凭证内容，点击下方「导入并覆盖保存」即可生效';
+                            });
+                          } catch (e) {
+                            setModalState(() {
+                              modalFeedback = '读取凭证文件失败：$e';
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.folder_open_outlined, size: 15),
+                        label: const Text('从文件读取',
+                            style: TextStyle(fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                  if (modalFeedback != null) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Taste.pillPosBg,
+                        borderRadius:
+                            BorderRadius.circular(Taste.radiusControl),
+                      ),
+                      child: SelectableText(
+                        modalFeedback!,
+                        style: const TextStyle(
+                            fontSize: 12, color: Taste.pillPosInk),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: ctrl,
+                    maxLines: 11,
+                    style:
+                        const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: '粘贴备份的好分数凭证 JSON 以恢复多账号…',
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
+          actions: [
+            TextButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: ctrl.text));
+                setModalState(() {
+                  modalFeedback = '凭证 JSON 已复制到系统剪贴板';
+                });
+              },
+              icon: const Icon(Icons.copy, size: 14),
+              label: const Text('复制凭证内容'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('关闭'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Taste.primary,
+                foregroundColor: Taste.primaryInk,
+              ),
+              onPressed: () async {
+                await widget.onImportConfigJson(ctrl.text);
+                if (ctx.mounted) Navigator.of(ctx).pop();
+                if (mounted) {
+                  setState(() => _statusMsg = '好分数凭证已成功导入并恢复');
+                }
+              },
+              child: const Text('导入并覆盖保存'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('关闭'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              await widget.onImportConfigJson(ctrl.text);
-              if (ctx.mounted) Navigator.of(ctx).pop();
-              if (mounted) {
-                setState(() => _statusMsg = '账号配置已成功导入并恢复');
-              }
-            },
-            child: const Text('导入并覆盖保存'),
-          ),
-        ],
       ),
     );
   }
@@ -2571,9 +2832,15 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
                               style: TextStyle(fontSize: 12)),
                         ),
                         OutlinedButton.icon(
+                          onPressed: _exportCredentialFileQuick,
+                          icon: const Icon(Icons.download_outlined, size: 15),
+                          label: const Text('一键导出好分数凭证文件 (.json)',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                        OutlinedButton.icon(
                           onPressed: _showImportExportModal,
                           icon: const Icon(Icons.import_export, size: 15),
-                          label: const Text('导出 / 导入多账号配置',
+                          label: const Text('凭证文件管理 / 导入恢复',
                               style: TextStyle(fontSize: 12)),
                         ),
                       ],
@@ -2690,5 +2957,715 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
         ),
       ),
     );
+  }
+}
+
+class _ChartPoint {
+  final ExamRecord exam;
+  final double value;
+  final String displayValue;
+  final String subtitle;
+
+  const _ChartPoint({
+    required this.exam,
+    required this.value,
+    required this.displayValue,
+    required this.subtitle,
+  });
+}
+
+/// Interactive Score Trend Line Chart + Subject Radar Balance Panel
+class ScoreTrendAnalyticsCard extends StatefulWidget {
+  final DashboardData dashboard;
+  final ExamRecord? selectedExam;
+  final ValueChanged<ExamRecord> onSelectExam;
+
+  const ScoreTrendAnalyticsCard({
+    super.key,
+    required this.dashboard,
+    required this.selectedExam,
+    required this.onSelectExam,
+  });
+
+  @override
+  State<ScoreTrendAnalyticsCard> createState() =>
+      _ScoreTrendAnalyticsCardState();
+}
+
+class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
+  String _metricSubject = '总分';
+  bool _usePercentageRatio = false;
+  int? _hoveredIndex;
+
+  List<_ChartPoint> _buildPoints() {
+    // Chronological order (oldest -> newest)
+    final chronological = widget.dashboard.exams.reversed.toList();
+    final pts = <_ChartPoint>[];
+    for (final ex in chronological) {
+      if (_metricSubject == '总分') {
+        if (ex.score <= 0 && ex.papers.isEmpty) continue;
+        final val = _usePercentageRatio
+            ? (ex.ratio ??
+                (ex.manfen > 0 ? round1((ex.score / ex.manfen) * 100) : 0))
+            : ex.score;
+        pts.add(
+          _ChartPoint(
+            exam: ex,
+            value: val,
+            displayValue: _usePercentageRatio ? '$val%' : ex.scoreS,
+            subtitle: ex.manfen > 0
+                ? '${ex.scoreS}/${round1(ex.manfen)} (${ex.ratio ?? 0}%)'
+                : ex.scoreS,
+          ),
+        );
+      } else {
+        PaperScore? match;
+        for (final p in ex.papers) {
+          if (p.subject == _metricSubject) {
+            match = p;
+            break;
+          }
+        }
+        if (match == null) continue;
+        final val = _usePercentageRatio
+            ? (match.ratio ??
+                (match.manfen > 0
+                    ? round1((match.score / match.manfen) * 100)
+                    : 0))
+            : match.score;
+        pts.add(
+          _ChartPoint(
+            exam: ex,
+            value: val,
+            displayValue: _usePercentageRatio ? '$val%' : match.scoreS,
+            subtitle: match.manfen > 0
+                ? '${match.scoreS}/${round1(match.manfen)} (${match.ratio ?? 0}%)'
+                : match.scoreS,
+          ),
+        );
+      }
+    }
+    return pts;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final subjects = <String>['总分', ...widget.dashboard.discoveredSubjects];
+    if (!subjects.contains(_metricSubject)) {
+      _metricSubject = '总分';
+    }
+    final points = _buildPoints();
+    final curExam = widget.selectedExam ??
+        (widget.dashboard.exams.isNotEmpty
+            ? widget.dashboard.exams.first
+            : null);
+
+    double maxVal = 0;
+    double minVal = 0;
+    double avgVal = 0;
+    if (points.isNotEmpty) {
+      maxVal = points.map((p) => p.value).reduce(math.max);
+      minVal = points.map((p) => p.value).reduce(math.min);
+      avgVal = round1(
+        points.fold<double>(0, (s, p) => s + p.value) / points.length,
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Taste.surface,
+        borderRadius: BorderRadius.circular(Taste.radiusCard),
+        border: Border.all(color: Taste.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header & Subject Metric Selector
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.show_chart, size: 18, color: Taste.accent),
+                    const SizedBox(width: 8),
+                    Text(
+                      '$_metricSubject 历次成绩变化趋势折线图与学科均衡度',
+                      style: const TextStyle(
+                        fontFamily: Taste.fontFamily,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Taste.text,
+                      ),
+                    ),
+                  ],
+                ),
+                Wrap(
+                  spacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (points.isNotEmpty) ...[
+                      TastePill(
+                        label:
+                            '最高 ${round1(maxVal)}${_usePercentageRatio ? "%" : ""}',
+                        tone: TastePillTone.positive,
+                      ),
+                      TastePill(
+                        label:
+                            '均值 ${round1(avgVal)}${_usePercentageRatio ? "%" : ""}',
+                        tone: TastePillTone.blue,
+                      ),
+                      TastePill(
+                        label:
+                            '最低 ${round1(minVal)}${_usePercentageRatio ? "%" : ""}',
+                        tone: TastePillTone.warning,
+                      ),
+                    ],
+                    ChoiceChip(
+                      visualDensity: VisualDensity.compact,
+                      selected: !_usePercentageRatio,
+                      label:
+                          const Text('原始分值', style: TextStyle(fontSize: 11)),
+                      onSelected: (_) =>
+                          setState(() => _usePercentageRatio = false),
+                    ),
+                    ChoiceChip(
+                      visualDensity: VisualDensity.compact,
+                      selected: _usePercentageRatio,
+                      label: const Text('标准得分率 (%)',
+                          style: TextStyle(fontSize: 11)),
+                      onSelected: (_) =>
+                          setState(() => _usePercentageRatio = true),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: const BoxDecoration(
+              color: Taste.raised,
+              border: Border(
+                top: BorderSide(color: Taste.border),
+                bottom: BorderSide(color: Taste.border),
+              ),
+            ),
+            child: IsolatedHorizontalScroll(
+              child: Row(
+                children: [
+                  const Text(
+                    '趋势维度：',
+                    style: TextStyle(fontSize: 12, color: Taste.muted),
+                  ),
+                  const SizedBox(width: 6),
+                  for (final s in subjects)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        visualDensity: VisualDensity.compact,
+                        selected: _metricSubject == s,
+                        label: Text(s, style: const TextStyle(fontSize: 12)),
+                        onSelected: (_) => setState(() {
+                          _metricSubject = s;
+                          _hoveredIndex = null;
+                        }),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: LayoutBuilder(
+              builder: (ctx, box) {
+                final showRadarSideBySide =
+                    box.maxWidth >= 820 &&
+                    curExam != null &&
+                    curExam.papers.length >= 3;
+                final lineChartWidget = _buildInteractiveLineChart(
+                  points,
+                  avgVal,
+                  curExam,
+                );
+                if (!showRadarSideBySide) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      lineChartWidget,
+                      if (curExam != null && curExam.papers.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        const Divider(height: 1, color: Taste.rule),
+                        const SizedBox(height: 12),
+                        _buildSubjectBalanceBars(curExam),
+                      ],
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 7, child: lineChartWidget),
+                    const SizedBox(width: 16),
+                    Container(
+                      width: 1,
+                      height: 220,
+                      color: Taste.border,
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      flex: 4,
+                      child: _buildSubjectBalanceBars(curExam),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInteractiveLineChart(
+    List<_ChartPoint> points,
+    double avgVal,
+    ExamRecord? selectedExam,
+  ) {
+    if (points.isEmpty) {
+      return const SizedBox(
+        height: 180,
+        child: Center(
+          child: Text(
+            '当前维度暂无足够考试数据绘制折线图',
+            style: TextStyle(fontSize: 12, color: Taste.muted),
+          ),
+        ),
+      );
+    }
+
+    final selectedIdx = points.indexWhere(
+      (p) => p.exam.examId == selectedExam?.examId,
+    );
+    final activeIdx = _hoveredIndex ??
+        (selectedIdx >= 0 ? selectedIdx : points.length - 1);
+    final activePt = points[activeIdx.clamp(0, points.length - 1)];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Active point summary bar
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: Taste.raised,
+            borderRadius: BorderRadius.circular(Taste.radiusControl),
+            border: Border.all(color: Taste.border),
+          ),
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Taste.accent,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${formatDateMs(activePt.exam.time)} · ${activePt.exam.name}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Taste.text,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                '$_metricSubject：${activePt.subtitle}（点击折线节点可切换考试与右侧答题卡）',
+                style: Taste.numStyle(
+                  size: 12,
+                  weight: FontWeight.w500,
+                  color: Taste.accent,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 196,
+          child: LayoutBuilder(
+            builder: (ctx, box) {
+              const leftPad = 44.0;
+              const rightPad = 20.0;
+              final plotW = math.max(10.0, box.maxWidth - leftPad - rightPad);
+
+              int hitIndexForDx(double dx) {
+                if (points.length <= 1) return 0;
+                final rel = (dx - leftPad).clamp(0.0, plotW);
+                final step = plotW / (points.length - 1);
+                return (rel / step).round().clamp(0, points.length - 1);
+              }
+
+              return MouseRegion(
+                cursor: SystemMouseCursors.click,
+                onHover: (ev) {
+                  final idx = hitIndexForDx(ev.localPosition.dx);
+                  if (idx != _hoveredIndex) {
+                    setState(() => _hoveredIndex = idx);
+                  }
+                },
+                onExit: (_) => setState(() => _hoveredIndex = null),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: (details) {
+                    final idx = hitIndexForDx(details.localPosition.dx);
+                    setState(() => _hoveredIndex = idx);
+                    widget.onSelectExam(points[idx].exam);
+                  },
+                  child: CustomPaint(
+                    size: Size(box.maxWidth, 196),
+                    painter: _ScoreLineChartPainter(
+                      points: points,
+                      avgValue: avgVal,
+                      selectedExamId: selectedExam?.examId ?? '',
+                      hoveredIndex: _hoveredIndex,
+                      isPercentage: _usePercentageRatio,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSubjectBalanceBars(ExamRecord exam) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${exam.name} · 各科得分率均衡度',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: Taste.text,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          '对比各学科得分率强弱项（≥85% 优秀 / 60-84% 良好 / <60% 待加强）',
+          style: TextStyle(fontSize: 11, color: Taste.muted),
+        ),
+        const SizedBox(height: 10),
+        for (final p in exam.papers)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      p.subject,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Taste.text,
+                      ),
+                    ),
+                    Text(
+                      '${p.scoreS}/${round1(p.manfen)} (${p.ratio ?? 0}%)',
+                      style: Taste.numStyle(
+                        size: 11,
+                        weight: FontWeight.w700,
+                        color: Taste.muted,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: Taste.raised,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: ((p.ratio ?? 0) / 100.0).clamp(0.0, 1.0),
+                    child: Container(
+                      color: (p.ratio ?? 0) >= 85
+                          ? Taste.positive
+                          : ((p.ratio ?? 0) >= 60
+                              ? Taste.accent
+                              : Taste.chart3),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ScoreLineChartPainter extends CustomPainter {
+  final List<_ChartPoint> points;
+  final double avgValue;
+  final String selectedExamId;
+  final int? hoveredIndex;
+  final bool isPercentage;
+
+  const _ScoreLineChartPainter({
+    required this.points,
+    required this.avgValue,
+    required this.selectedExamId,
+    required this.hoveredIndex,
+    required this.isPercentage,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.isEmpty) return;
+
+    const leftPad = 44.0;
+    const rightPad = 20.0;
+    const topPad = 22.0;
+    const bottomPad = 30.0;
+    final plotW = math.max(10.0, size.width - leftPad - rightPad);
+    final plotH = math.max(10.0, size.height - topPad - bottomPad);
+
+    double minV = points.map((p) => p.value).reduce(math.min);
+    double maxV = points.map((p) => p.value).reduce(math.max);
+    if ((maxV - minV).abs() < 4.0) {
+      minV = math.max(0.0, minV - 5.0);
+      maxV = maxV + 5.0;
+    } else {
+      final pad = (maxV - minV) * 0.14;
+      minV = math.max(0.0, minV - pad);
+      maxV = isPercentage ? math.min(100.0, maxV + pad) : maxV + pad;
+    }
+    final span = math.max(1.0, maxV - minV);
+
+    double xAt(int i) {
+      if (points.length == 1) return leftPad + plotW / 2.0;
+      return leftPad + (i / (points.length - 1)) * plotW;
+    }
+
+    double yAt(double v) {
+      return topPad + plotH - ((v - minV) / span).clamp(0.0, 1.0) * plotH;
+    }
+
+    // 1. Horizontal grid lines & Y-axis labels
+    final gridPaint = Paint()
+      ..color = Taste.rule
+      ..strokeWidth = 1.0;
+
+    for (var g = 0; g <= 3; g++) {
+      final ratio = g / 3.0;
+      final gy = topPad + plotH * (1.0 - ratio);
+      final gv = minV + span * ratio;
+      canvas.drawLine(
+        Offset(leftPad, gy),
+        Offset(leftPad + plotW, gy),
+        gridPaint,
+      );
+      _drawLabel(
+        canvas,
+        isPercentage ? '${gv.round()}%' : '${gv.round()}',
+        Offset(2, gy - 7),
+        color: Taste.faint,
+        fontSize: 10,
+        weight: FontWeight.w400,
+      );
+    }
+
+    // 2. Dashed average reference line
+    final avgY = yAt(avgValue);
+    final avgPaint = Paint()
+      ..color = Taste.chart2.withValues(alpha: 0.45)
+      ..strokeWidth = 1.0;
+    for (double dx = leftPad; dx < leftPad + plotW; dx += 8) {
+      canvas.drawLine(
+        Offset(dx, avgY),
+        Offset(math.min(dx + 4, leftPad + plotW), avgY),
+        avgPaint,
+      );
+    }
+
+    // 3. Area fill & Smooth Line Path
+    final linePath = Path();
+    final fillPath = Path();
+    for (var i = 0; i < points.length; i++) {
+      final px = xAt(i);
+      final py = yAt(points[i].value);
+      if (i == 0) {
+        linePath.moveTo(px, py);
+        fillPath.moveTo(px, topPad + plotH);
+        fillPath.lineTo(px, py);
+      } else {
+        final prevX = xAt(i - 1);
+        final prevY = yAt(points[i - 1].value);
+        final midX = (prevX + px) / 2.0;
+        linePath.cubicTo(midX, prevY, midX, py, px, py);
+        fillPath.cubicTo(midX, prevY, midX, py, px, py);
+      }
+      if (i == points.length - 1) {
+        fillPath.lineTo(px, topPad + plotH);
+        fillPath.close();
+      }
+    }
+
+    if (points.length > 1) {
+      final fillShader = ui.Gradient.linear(
+        const Offset(0, topPad),
+        Offset(0, topPad + plotH),
+        <Color>[
+          Taste.accent.withValues(alpha: 0.16),
+          Taste.accent.withValues(alpha: 0.01),
+        ],
+      );
+      canvas.drawPath(
+        fillPath,
+        Paint()
+          ..shader = fillShader
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawPath(
+        linePath,
+        Paint()
+          ..color = Taste.accent
+          ..strokeWidth = 2.4
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+
+    // 4. Data nodes, value tags & X-axis dates
+    final labelStep = math.max(1, (points.length / 7).ceil());
+    for (var i = 0; i < points.length; i++) {
+      final pt = points[i];
+      final px = xAt(i);
+      final py = yAt(pt.value);
+      final isSel = pt.exam.examId == selectedExamId;
+      final isHov = hoveredIndex == i;
+
+      if (isSel || isHov) {
+        canvas.drawLine(
+          Offset(px, topPad),
+          Offset(px, topPad + plotH),
+          Paint()
+            ..color = Taste.accent.withValues(alpha: 0.25)
+            ..strokeWidth = 1.2,
+        );
+      }
+
+      // Outer halo for active/selected point
+      if (isSel || isHov) {
+        canvas.drawCircle(
+          Offset(px, py),
+          7.0,
+          Paint()..color = Taste.accent.withValues(alpha: 0.18),
+        );
+      }
+      canvas.drawCircle(
+        Offset(px, py),
+        isSel || isHov ? 4.5 : 3.4,
+        Paint()..color = Colors.white,
+      );
+      canvas.drawCircle(
+        Offset(px, py),
+        isSel || isHov ? 4.5 : 3.4,
+        Paint()
+          ..color = isSel || isHov ? Taste.primary : Taste.accent
+          ..strokeWidth = isSel || isHov ? 2.4 : 1.8
+          ..style = PaintingStyle.stroke,
+      );
+
+      // Value label above point
+      if (points.length <= 10 || isSel || isHov || i == points.length - 1) {
+        _drawLabel(
+          canvas,
+          pt.displayValue,
+          Offset(px - 16, py - 18),
+          color: isSel || isHov ? Taste.text : Taste.accent,
+          fontSize: 10.5,
+          weight: isSel || isHov ? FontWeight.w700 : FontWeight.w500,
+        );
+      }
+
+      // X-axis date label
+      if (i % labelStep == 0 || i == points.length - 1 || isSel) {
+        final dateStr = formatDateMs(pt.exam.time);
+        final shortDate =
+            dateStr.length >= 10 ? dateStr.substring(5, 10) : dateStr;
+        _drawLabel(
+          canvas,
+          shortDate,
+          Offset(px - 16, topPad + plotH + 6),
+          color: isSel ? Taste.text : Taste.muted,
+          fontSize: 10,
+          weight: isSel ? FontWeight.w700 : FontWeight.w400,
+        );
+      }
+    }
+  }
+
+  void _drawLabel(
+    Canvas canvas,
+    String text,
+    Offset offset, {
+    required Color color,
+    required double fontSize,
+    required FontWeight weight,
+  }) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          fontFamily: Taste.fontFamily,
+          color: color,
+          fontSize: fontSize,
+          fontWeight: weight,
+          fontFeatures: const [ui.FontFeature.tabularFigures()],
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, offset);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScoreLineChartPainter oldDelegate) {
+    return oldDelegate.points != points ||
+        oldDelegate.avgValue != avgValue ||
+        oldDelegate.selectedExamId != selectedExamId ||
+        oldDelegate.hoveredIndex != hoveredIndex ||
+        oldDelegate.isPercentage != isPercentage;
   }
 }

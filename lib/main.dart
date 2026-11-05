@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -119,7 +121,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
   // Right Docked Inspector state (for desktop >= 1080px)
   ExamRecord? _inspectingExam;
   PaperScore? _inspectingPaper;
-  bool _inspectorCollapsed = true;
+  bool _inspectorCollapsed = false;
   late double _inspectorWidth;
 
   // Fleet / All-students comparison cache
@@ -233,9 +235,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
       _initializing = false;
       if (instantDash != null) {
         _dashboard = instantDash;
-        if (instantDash.exams.isNotEmpty) {
-          _selectedExamId = instantDash.exams.first.examId;
-        }
+        _syncInspectorWithDashboard(instantDash);
       }
       _rebuildFleetRows();
     });
@@ -282,6 +282,38 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         jsonEncode(dash.toJson()),
       );
     } catch (_) {}
+  }
+
+  void _syncInspectorWithDashboard(
+    DashboardData dash, {
+    bool openRightPane = true,
+  }) {
+    if (dash.exams.isEmpty) {
+      _selectedExamId = '';
+      _inspectingExam = null;
+      _inspectingPaper = null;
+      return;
+    }
+    if (!dash.exams.any((e) => e.examId == _selectedExamId)) {
+      _selectedExamId = dash.exams.first.examId;
+    }
+    final targetExam = dash.exams.firstWhere(
+      (e) => e.examId == _selectedExamId,
+      orElse: () => dash.exams.first,
+    );
+    _inspectingExam = targetExam;
+    if (targetExam.papers.isEmpty) {
+      _inspectingPaper = null;
+      return;
+    }
+    final prevSubj = _inspectingPaper?.subject ?? '';
+    _inspectingPaper = targetExam.papers.firstWhere(
+      (p) => prevSubj.isNotEmpty && p.subject == prevSubj,
+      orElse: () => targetExam.papers.first,
+    );
+    if (openRightPane) {
+      _inspectorCollapsed = false;
+    }
   }
 
   void _rebuildFleetRows() {
@@ -340,10 +372,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
       setState(() {
         _dashboard = dash;
         _loadingDashboard = false;
-        if (dash.exams.isNotEmpty &&
-            !dash.exams.any((e) => e.examId == _selectedExamId)) {
-          _selectedExamId = dash.exams.first.examId;
-        }
+        _syncInspectorWithDashboard(dash, openRightPane: true);
         _rebuildFleetRows();
       });
     } catch (e) {
@@ -377,10 +406,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
       if (cached != null) {
         _dashboard = cached;
         _loadingDashboard = false;
-        if (cached.exams.isNotEmpty &&
-            !cached.exams.any((e) => e.examId == _selectedExamId)) {
-          _selectedExamId = cached.exams.first.examId;
-        }
+        _syncInspectorWithDashboard(cached, openRightPane: true);
       } else {
         _loadingDashboard = true;
       }
@@ -420,9 +446,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
       setState(() {
         _dashboard = dash;
         _loadingDashboard = false;
-        if (dash.exams.isNotEmpty) {
-          _selectedExamId = dash.exams.first.examId;
-        }
+        _syncInspectorWithDashboard(dash, openRightPane: true);
         _rebuildFleetRows();
       });
     } catch (e) {
@@ -592,9 +616,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         _inlineBindingStudent = false;
         _inlineBindAccountId = null;
         _dashboard = dash;
-        if (dash.exams.isNotEmpty) {
-          _selectedExamId = dash.exams.first.examId;
-        }
+        _syncInspectorWithDashboard(dash, openRightPane: true);
         _rebuildFleetRows();
       });
     } catch (e) {
@@ -646,9 +668,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
           if (!mounted) return;
           setState(() {
             _dashboard = dash;
-            if (dash.exams.isNotEmpty) {
-              _selectedExamId = dash.exams.first.examId;
-            }
+            _syncInspectorWithDashboard(dash, openRightPane: true);
             _rebuildFleetRows();
           });
         },
@@ -667,6 +687,78 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         currentStudent: _dashboard?.currentStudent ?? acc.activeStudent,
       ),
     );
+  }
+
+  Future<String> _buildExportConfigJson({HfsAccount? singleAccount}) async {
+    final targetAccounts =
+        singleAccount != null ? <HfsAccount>[singleAccount] : _accounts;
+    return const JsonEncoder.withIndent('  ').convert({
+      'format': 'hfs_flutter_credentials_v2',
+      'exportedAt': DateTime.now().toIso8601String(),
+      'accounts': targetAccounts.map((a) => a.toJson()).toList(),
+      'selectedAccountId': singleAccount?.id ?? _selectedAccountId,
+      'settings': _settings.toJson(),
+    });
+  }
+
+  Future<void> _exportCredentialFileDirect({HfsAccount? singleAccount}) async {
+    try {
+      final raw = await _buildExportConfigJson(singleAccount: singleAccount);
+      final ts = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .split('.')
+          .first;
+      final suffix = singleAccount != null ? '_${singleAccount.id}' : '';
+      final fileName = 'hfs_credentials${suffix}_$ts.json';
+      final env = Platform.environment;
+      final candidates = <String>[
+        if ((env['USERPROFILE'] ?? '').isNotEmpty)
+          '${env['USERPROFILE']}\\Downloads\\$fileName',
+        if ((env['USERPROFILE'] ?? '').isNotEmpty)
+          '${env['USERPROFILE']}\\Desktop\\$fileName',
+        if ((env['HOME'] ?? '').isNotEmpty)
+          '${env['HOME']}/Downloads/$fileName',
+        if ((env['HOME'] ?? '').isNotEmpty) '${env['HOME']}/Desktop/$fileName',
+        if ((env['HOME'] ?? '').isNotEmpty) '${env['HOME']}/$fileName',
+        if (Platform.isAndroid) '/sdcard/Download/$fileName',
+        '${Directory.current.path}${Platform.pathSeparator}$fileName',
+        '${Directory.systemTemp.path}${Platform.pathSeparator}$fileName',
+      ];
+      String? savedPath;
+      for (final p in candidates) {
+        try {
+          final f = File(p);
+          if (await f.parent.exists()) {
+            await f.writeAsString(raw);
+            savedPath = f.path;
+            break;
+          }
+        } catch (_) {}
+      }
+      if (savedPath == null) {
+        final fb = File(
+          '${Directory.systemTemp.path}${Platform.pathSeparator}$fileName',
+        );
+        await fb.writeAsString(raw);
+        savedPath = fb.path;
+      }
+      await Clipboard.setData(ClipboardData(text: raw));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Taste.text,
+          content: Text(
+            '已导出好分数凭证文件至：$savedPath（并已同步复制到剪贴板）',
+            style: const TextStyle(fontSize: 12, color: Colors.white),
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorBanner = '导出好分数凭证文件失败：$e');
+    }
   }
 
   void _openSettingsModal() {
@@ -694,13 +786,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
             await prefs.remove(k);
           }
         },
-        onExportConfigJson: () async {
-          return const JsonEncoder.withIndent('  ').convert({
-            'accounts': _accounts.map((a) => a.toJson()).toList(),
-            'selectedAccountId': _selectedAccountId,
-            'settings': _settings.toJson(),
-          });
-        },
+        onExportConfigJson: _buildExportConfigJson,
         onImportConfigJson: (raw) async {
           final m = jsonDecode(raw);
           if (m is Map && m['accounts'] is List) {
@@ -1127,19 +1213,25 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
       child: Row(
         children: [
           Container(
-            width: 24,
-            height: 24,
-            alignment: Alignment.center,
+            width: 26,
+            height: 26,
+            clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: Taste.accent,
               borderRadius: BorderRadius.circular(6),
             ),
-            child: const Text(
-              '好',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
+            child: Image.asset(
+              'assets/images/app_logo.png',
+              fit: BoxFit.cover,
+              errorBuilder: (ctx, err, st) => const Center(
+                child: Text(
+                  '好',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ),
           ),
@@ -1223,6 +1315,14 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                 : () => _loadDashboardForCurrent(allowCache: false),
           ),
           const SizedBox(width: 6),
+          if (isDesktop) ...[
+            _buildTopBarBtn(
+              label: '导出凭证',
+              icon: Icons.download_outlined,
+              onTap: () => _exportCredentialFileDirect(),
+            ),
+            const SizedBox(width: 6),
+          ],
           _buildTopBarBtn(
             label: '设置',
             icon: Icons.tune,
@@ -1598,6 +1698,13 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    _svgIconActionBtn(
+                      tooltip: '导出该账号凭证文件 (.json)',
+                      icon: Icons.download_outlined,
+                      onTap: () =>
+                          _exportCredentialFileDirect(singleAccount: acc),
+                    ),
+                    const SizedBox(width: 4),
                     _svgIconActionBtn(
                       tooltip: '重连 / 更换密码',
                       icon: Icons.key_outlined,
@@ -2036,6 +2143,17 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                           runSpacing: 6,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.asset(
+                                'assets/images/student_medallion.png',
+                                width: 32,
+                                height: 32,
+                                fit: BoxFit.cover,
+                                errorBuilder: (ctx, err, st) =>
+                                    const SizedBox.shrink(),
+                              ),
+                            ),
                             Text(
                               stu?.studentName ?? dash.account.displayLabel,
                               style: const TextStyle(
@@ -2114,7 +2232,25 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                               ],
                               onChanged: (val) {
                                 if (val != null) {
-                                  setState(() => _selectedExamId = val);
+                                  setState(() {
+                                    _selectedExamId = val;
+                                    final ex = exams.firstWhere(
+                                      (e) => e.examId == val,
+                                      orElse: () => exams.first,
+                                    );
+                                    _inspectingExam = ex;
+                                    if (ex.papers.isNotEmpty) {
+                                      final prevSubj =
+                                          _inspectingPaper?.subject ?? '';
+                                      _inspectingPaper = ex.papers.firstWhere(
+                                        (p) =>
+                                            prevSubj.isNotEmpty &&
+                                            p.subject == prevSubj,
+                                        orElse: () => ex.papers.first,
+                                      );
+                                      _inspectorCollapsed = false;
+                                    }
+                                  });
                                 }
                               },
                             ),
@@ -2134,6 +2270,16 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
           ),
         ),
         const SizedBox(height: 20),
+
+        // 1.5 Interactive Score Trend Line Chart & Subject Balance Analytics
+        if (exams.isNotEmpty) ...[
+          ScoreTrendAnalyticsCard(
+            dashboard: dash,
+            selectedExam: curExam,
+            onSelectExam: _selectExamRow,
+          ),
+          const SizedBox(height: 20),
+        ],
 
         // 2. Score Matrix Table Panel (Sticky Date/Name/Total + 2px Ratio Bar + Subject Filter)
         Container(
@@ -2425,12 +2571,14 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
     bool isPrimary = false,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
@@ -2438,34 +2586,34 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
             ),
           ),
           const SizedBox(height: 6),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Flexible(
-                child: Text(
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
                   value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: Taste.numStyle(
                     size: 24,
                     weight: FontWeight.w500,
                     color: isPrimary ? Taste.accent : Taste.text,
                   ),
                 ),
-              ),
-              if (subValue.isNotEmpty) ...[
-                const SizedBox(width: 4),
-                Text(
-                  subValue,
-                  style: Taste.numStyle(
-                    size: 13,
-                    weight: FontWeight.w400,
-                    color: Taste.muted,
+                if (subValue.isNotEmpty) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    subValue,
+                    style: Taste.numStyle(
+                      size: 13,
+                      weight: FontWeight.w400,
+                      color: Taste.muted,
+                    ),
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
           const SizedBox(height: 4),
           Text(
@@ -2571,6 +2719,21 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
     );
   }
 
+  void _selectExamRow(ExamRecord exam) {
+    setState(() {
+      _selectedExamId = exam.examId;
+      _inspectingExam = exam;
+      if (exam.papers.isNotEmpty) {
+        final prevSubj = _inspectingPaper?.subject ?? '';
+        _inspectingPaper = exam.papers.firstWhere(
+          (p) => prevSubj.isNotEmpty && p.subject == prevSubj,
+          orElse: () => exam.papers.first,
+        );
+        _inspectorCollapsed = false;
+      }
+    });
+  }
+
   TableRow _buildScoreMatrixRow(
     ExamRecord exam,
     ExamRecord? olderExam,
@@ -2605,7 +2768,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
       children: [
         // Date cell
         InkWell(
-          onTap: () => setState(() => _selectedExamId = exam.examId),
+          onTap: () => _selectExamRow(exam),
           child: Container(
             height: 48,
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -2618,7 +2781,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         ),
         // Exam name cell
         InkWell(
-          onTap: () => setState(() => _selectedExamId = exam.examId),
+          onTap: () => _selectExamRow(exam),
           child: Container(
             height: 48,
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -3050,10 +3213,20 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                         color: Taste.text,
                       ),
                     ),
-                    _buildTopBarBtn(
-                      label: '＋ 新增 / 注册账号',
-                      icon: Icons.add,
-                      onTap: () => _openAuthOrRegisterModal(),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        _buildTopBarBtn(
+                          label: '导出凭证文件 (.json)',
+                          icon: Icons.download_outlined,
+                          onTap: () => _exportCredentialFileDirect(),
+                        ),
+                        _buildTopBarBtn(
+                          label: '＋ 新增 / 注册账号',
+                          icon: Icons.add,
+                          onTap: () => _openAuthOrRegisterModal(),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -3401,7 +3574,10 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.exam.examId != widget.exam.examId ||
         oldWidget.paper.paperId != widget.paper.paperId ||
-        oldWidget.paper.pid != widget.paper.pid) {
+        oldWidget.paper.pid != widget.paper.pid ||
+        oldWidget.exam.studentId != widget.exam.studentId ||
+        oldWidget.account.id != widget.account.id ||
+        oldWidget.account.activeStudentId != widget.account.activeStudentId) {
       _highlightedQName = null;
       _loadInspection();
     }
@@ -3743,11 +3919,30 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
 
   List<Widget> _buildAnswerSheetGallery(PaperInspectionData data) {
     if (data.answerPages.isEmpty) {
-      return const [
+      return [
         Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Center(
-            child: Text('该科目暂无答题卡扫描件', style: TextStyle(color: Taste.muted)),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.asset(
+                    'assets/images/empty_inspector.png',
+                    width: 140,
+                    height: 140,
+                    fit: BoxFit.contain,
+                    errorBuilder: (ctx, err, st) => const SizedBox.shrink(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  '该科目暂无答题卡扫描件',
+                  style: TextStyle(color: Taste.muted),
+                ),
+              ],
+            ),
           ),
         ),
       ];
@@ -3785,19 +3980,108 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                         color: Taste.muted,
                       ),
                     ),
-                    _toolBtn(
-                      '全屏放大阅卷',
-                      onTap: () => showOssImageLightbox(
-                        context: context,
-                        client: widget.client,
-                        imageUrl: data.answerPages[i],
-                        caption:
-                            '${widget.exam.name} · ${widget.paper.subject} 第 ${i + 1} 页',
-                        overlay: i < data.pageOverlays.length
-                            ? data.pageOverlays[i]
-                            : null,
-                        initialShowOverlay: _showGradingOverlay,
-                      ),
+                    Wrap(
+                      spacing: 4,
+                      children: [
+                        _toolBtn(
+                          '复制图片',
+                          onTap: () async {
+                            try {
+                              final raw = await widget.client
+                                  .fetchOssImageBytes(data.answerPages[i]);
+                              final codec =
+                                  await ui.instantiateImageCodec(raw);
+                              final frame = await codec.getNextFrame();
+                              codec.dispose();
+                              final png = await HfsImageClipboardAndExporter
+                                  .encodeCompositePng(
+                                rawBytes: raw,
+                                decodedImage: frame.image,
+                                overlay: i < data.pageOverlays.length
+                                    ? data.pageOverlays[i]
+                                    : null,
+                                includeOverlay: _showGradingOverlay,
+                                highlightedQuestionName: _highlightedQName,
+                              );
+                              frame.image.dispose();
+                              final saved = await HfsImageClipboardAndExporter
+                                  .copyImageToSystemClipboard(
+                                bytes: png,
+                                label:
+                                    '${widget.paper.subject}_答题卡_第${i + 1}页',
+                              );
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('已复制图片到剪贴板（同时存至：$saved）'),
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('复制失败：$e')),
+                              );
+                            }
+                          },
+                        ),
+                        _toolBtn(
+                          '导出图片',
+                          onTap: () async {
+                            try {
+                              final raw = await widget.client
+                                  .fetchOssImageBytes(data.answerPages[i]);
+                              final codec =
+                                  await ui.instantiateImageCodec(raw);
+                              final frame = await codec.getNextFrame();
+                              codec.dispose();
+                              final png = await HfsImageClipboardAndExporter
+                                  .encodeCompositePng(
+                                rawBytes: raw,
+                                decodedImage: frame.image,
+                                overlay: i < data.pageOverlays.length
+                                    ? data.pageOverlays[i]
+                                    : null,
+                                includeOverlay: _showGradingOverlay,
+                                highlightedQuestionName: _highlightedQName,
+                              );
+                              frame.image.dispose();
+                              final saved = await HfsImageClipboardAndExporter
+                                  .saveImageToDisk(
+                                bytes: png,
+                                label:
+                                    '${widget.paper.subject}_答题卡_第${i + 1}页',
+                              );
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('图片已导出至：$saved'),
+                                  duration: const Duration(seconds: 4),
+                                ),
+                              );
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('导出失败：$e')),
+                              );
+                            }
+                          },
+                        ),
+                        _toolBtn(
+                          '全屏放大',
+                          onTap: () => showOssImageLightbox(
+                            context: context,
+                            client: widget.client,
+                            imageUrl: data.answerPages[i],
+                            caption:
+                                '${widget.exam.name} · ${widget.paper.subject} 第 ${i + 1} 页',
+                            overlay: i < data.pageOverlays.length
+                                ? data.pageOverlays[i]
+                                : null,
+                            initialShowOverlay: _showGradingOverlay,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -3809,6 +4093,9 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                     i < data.pageOverlays.length ? data.pageOverlays[i] : null,
                 showOverlay: _showGradingOverlay,
                 zoomScale: _zoomScale,
+                onZoomChanged: (newZoom) {
+                  setState(() => _zoomScale = newZoom);
+                },
                 highlightedQuestionName: _highlightedQName,
                 onOpenLightbox: () => showOssImageLightbox(
                   context: context,
@@ -3866,6 +4153,9 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                   imageUrl: data.originalPages[i],
                   showOverlay: false,
                   zoomScale: _zoomScale,
+                  onZoomChanged: (newZoom) {
+                    setState(() => _zoomScale = newZoom);
+                  },
                   onOpenLightbox: () => showOssImageLightbox(
                     context: context,
                     client: widget.client,
