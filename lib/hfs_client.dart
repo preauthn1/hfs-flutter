@@ -473,6 +473,7 @@ class HfsUpstreamClient {
   Future<Map<String, dynamic>> ensureAccount(
     HfsAccount account, {
     String targetStudentId = '',
+    bool forceSwitchSession = false,
   }) async {
     var check = await _hfsFetch(
       account,
@@ -510,7 +511,9 @@ class HfsUpstreamClient {
 
     final wantStu = targetStudentId.isNotEmpty
         ? targetStudentId
-        : account.desiredStudentId;
+        : (account.desiredStudentId.isNotEmpty
+            ? account.desiredStudentId
+            : account.activeStudentId);
     var dataMap = (check.body['data'] is Map)
         ? Map<String, dynamic>.from(check.body['data'] as Map)
         : <String, dynamic>{};
@@ -521,7 +524,7 @@ class HfsUpstreamClient {
         ? strOf(linked['studentId'])
         : strOf(linked['id']);
 
-    if (wantStu.isNotEmpty && wantStu != curLinkedId) {
+    if (wantStu.isNotEmpty && (forceSwitchSession || wantStu != curLinkedId)) {
       try {
         await _hfsFetch(
           account,
@@ -549,6 +552,9 @@ class HfsUpstreamClient {
           : strOf(linked['id']);
       if (sid.isNotEmpty) {
         account.activeStudentId = sid;
+        if (targetStudentId.isNotEmpty && sid == targetStudentId) {
+          account.desiredStudentId = sid;
+        }
       }
     }
     return dataMap;
@@ -1404,27 +1410,85 @@ class HfsUpstreamClient {
     String studentId = '',
   }) async {
     return _withAccountLock(account.id, () async {
-      await ensureAccount(account, targetStudentId: studentId);
-      final res = await _hfsFetch(account, '/v2/students/classmates');
-      if (!_isCodeOk(res.body['code']) || res.body['data'] is! List) {
-        throw Exception(strOf(res.body['msg'], '获取同班同学名册失败'));
+      final prevActive = account.activeStudentId;
+      final prevDesired = account.desiredStudentId;
+      try {
+        await ensureAccount(
+          account,
+          targetStudentId: studentId,
+          forceSwitchSession: studentId.isNotEmpty,
+        );
+        final res = await _hfsFetch(account, '/v2/students/classmates');
+        if (!_isCodeOk(res.body['code']) || res.body['data'] is! List) {
+          throw Exception(strOf(res.body['msg'], '获取同班同学名册失败'));
+        }
+        return (res.body['data'] as List)
+            .whereType<Map>()
+            .map(
+                (e) => ClassmateBindEntry.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      } finally {
+        final restoreId =
+            prevDesired.isNotEmpty ? prevDesired : prevActive;
+        if (studentId.isNotEmpty &&
+            restoreId.isNotEmpty &&
+            restoreId != studentId) {
+          try {
+            await _hfsFetch(
+              account,
+              '/v2/user-center/sessions',
+              method: 'POST',
+              jsonBody: <String, dynamic>{
+                'deviceType': 1,
+                'studentId': restoreId,
+              },
+            );
+          } catch (_) {}
+          account.activeStudentId = prevActive;
+          account.desiredStudentId = prevDesired;
+        }
       }
-      return (res.body['data'] as List)
-          .whereType<Map>()
-          .map((e) => ClassmateBindEntry.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
     });
   }
 
-  /// Execute read-only upstream diagnostic endpoint (`GET <path>`)
+  /// Execute read-only upstream diagnostic endpoint (`GET <path>`) for a specific bound student/class
   Future<Map<String, dynamic>> fetchDiagnosticEndpoint(
     HfsAccount account,
-    String path,
-  ) async {
+    String path, {
+    String studentId = '',
+  }) async {
     return _withAccountLock(account.id, () async {
-      await ensureAccount(account);
-      final res = await _hfsFetch(account, path);
-      return res.body;
+      final prevActive = account.activeStudentId;
+      final prevDesired = account.desiredStudentId;
+      try {
+        await ensureAccount(
+          account,
+          targetStudentId: studentId,
+          forceSwitchSession: studentId.isNotEmpty,
+        );
+        final res = await _hfsFetch(account, path);
+        return res.body;
+      } finally {
+        final restoreId =
+            prevDesired.isNotEmpty ? prevDesired : prevActive;
+        if (studentId.isNotEmpty &&
+            restoreId.isNotEmpty &&
+            restoreId != studentId) {
+          try {
+            await _hfsFetch(
+              account,
+              '/v2/user-center/sessions',
+              method: 'POST',
+              jsonBody: <String, dynamic>{
+                'deviceType': 1,
+                'studentId': restoreId,
+              },
+            );
+          } catch (_) {}
+          account.activeStudentId = prevActive;
+          account.desiredStudentId = prevDesired;
+        }
+      }
     });
   }
 

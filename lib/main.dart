@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -29,6 +28,11 @@ class AppScrollBehavior extends MaterialScrollBehavior {
         PointerDeviceKind.stylus,
         PointerDeviceKind.unknown,
       };
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) {
+    return const ClampingScrollPhysics();
+  }
 }
 
 class HfsFlutterApp extends StatelessWidget {
@@ -684,6 +688,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
       builder: (ctx) => ClassmatesRosterDialog(
         client: _client,
         account: acc,
+        accounts: _accounts,
         currentStudent: _dashboard?.currentStudent ?? acc.activeStudent,
       ),
     );
@@ -711,38 +716,11 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
           .first;
       final suffix = singleAccount != null ? '_${singleAccount.id}' : '';
       final fileName = 'hfs_credentials${suffix}_$ts.json';
-      final env = Platform.environment;
-      final candidates = <String>[
-        if ((env['USERPROFILE'] ?? '').isNotEmpty)
-          '${env['USERPROFILE']}\\Downloads\\$fileName',
-        if ((env['USERPROFILE'] ?? '').isNotEmpty)
-          '${env['USERPROFILE']}\\Desktop\\$fileName',
-        if ((env['HOME'] ?? '').isNotEmpty)
-          '${env['HOME']}/Downloads/$fileName',
-        if ((env['HOME'] ?? '').isNotEmpty) '${env['HOME']}/Desktop/$fileName',
-        if ((env['HOME'] ?? '').isNotEmpty) '${env['HOME']}/$fileName',
-        if (Platform.isAndroid) '/sdcard/Download/$fileName',
-        '${Directory.current.path}${Platform.pathSeparator}$fileName',
-        '${Directory.systemTemp.path}${Platform.pathSeparator}$fileName',
-      ];
-      String? savedPath;
-      for (final p in candidates) {
-        try {
-          final f = File(p);
-          if (await f.parent.exists()) {
-            await f.writeAsString(raw);
-            savedPath = f.path;
-            break;
-          }
-        } catch (_) {}
-      }
-      if (savedPath == null) {
-        final fb = File(
-          '${Directory.systemTemp.path}${Platform.pathSeparator}$fileName',
-        );
-        await fb.writeAsString(raw);
-        savedPath = fb.path;
-      }
+      final dlDir =
+          await HfsImageClipboardAndExporter.resolveDownloadsDirectory();
+      final fb = File('${dlDir.path}${Platform.pathSeparator}$fileName');
+      await fb.writeAsString(raw, flush: true);
+      final savedPath = fb.path;
       await Clipboard.setData(ClipboardData(text: raw));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -768,6 +746,9 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         settings: _settings,
         client: _client,
         activeAccount: _currentAccount,
+        accounts: _accounts,
+        activeStudent:
+            _dashboard?.currentStudent ?? _currentAccount?.activeStudent,
         onSaveSettings: (newSettings) {
           setState(() {
             _settings = newSettings;
@@ -1185,6 +1166,11 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                                 paper: _inspectingPaper!,
                                 defaultShowOverlay:
                                     _settings.defaultGradingOverlay,
+                                onSelectPaper: (nextPaper) =>
+                                    _openPaperInspection(
+                                  _inspectingExam!,
+                                  nextPaper,
+                                ),
                                 onClose: () => setState(() {
                                   _inspectorCollapsed = true;
                                 }),
@@ -2208,6 +2194,9 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                             width: 240,
                             height: 32,
                             child: DropdownButtonFormField<String>(
+                              key: ValueKey(
+                                'top_exam_sel_${curExam?.examId ?? exams.first.examId}',
+                              ),
                               initialValue: curExam?.examId ?? exams.first.examId,
                               isExpanded: true,
                               isDense: true,
@@ -2276,6 +2265,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
           ScoreTrendAnalyticsCard(
             dashboard: dash,
             selectedExam: curExam,
+            selectedSubject: _inspectingPaper?.subject,
             onSelectExam: _selectExamRow,
           ),
           const SizedBox(height: 20),
@@ -2719,14 +2709,18 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
     );
   }
 
-  void _selectExamRow(ExamRecord exam) {
+  void _selectExamRow(ExamRecord exam, {String? preferredSubject}) {
     setState(() {
       _selectedExamId = exam.examId;
       _inspectingExam = exam;
       if (exam.papers.isNotEmpty) {
-        final prevSubj = _inspectingPaper?.subject ?? '';
+        final wantSubj = (preferredSubject != null &&
+                preferredSubject.isNotEmpty &&
+                preferredSubject != '总分')
+            ? preferredSubject
+            : (_inspectingPaper?.subject ?? '');
         _inspectingPaper = exam.papers.firstWhere(
-          (p) => prevSubj.isNotEmpty && p.subject == prevSubj,
+          (p) => wantSubj.isNotEmpty && p.subject == wantSubj,
           orElse: () => exam.papers.first,
         );
         _inspectorCollapsed = false;
@@ -3527,6 +3521,7 @@ class PaperInspectionPane extends StatefulWidget {
   final ExamRecord exam;
   final PaperScore paper;
   final bool defaultShowOverlay;
+  final ValueChanged<PaperScore>? onSelectPaper;
   final VoidCallback onClose;
 
   const PaperInspectionPane({
@@ -3536,6 +3531,7 @@ class PaperInspectionPane extends StatefulWidget {
     required this.exam,
     required this.paper,
     this.defaultShowOverlay = true,
+    this.onSelectPaper,
     required this.onClose,
   });
 
@@ -3555,18 +3551,104 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
   int _subTab = 0; // 0 = 批改合成与答题卡, 1 = 原卷与题块, 2 = 得分明细
   double _zoomScale = 1.0;
   String? _highlightedQName;
+  int _activePageIndex = 0;
+  bool _singlePageView = true;
 
   @override
   void initState() {
     super.initState();
     _showGradingOverlay = widget.defaultShowOverlay;
+    HardwareKeyboard.instance.addHandler(_handleInspectorKeyEvent);
     _loadInspection();
   }
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleInspectorKeyEvent);
     _inspectorScrollCtrl.dispose();
     super.dispose();
+  }
+
+  bool _handleInspectorKeyEvent(KeyEvent event) {
+    if (!mounted || _loading || _data == null) return false;
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
+    // Do not intercept keys when a modal dialog (e.g. Lightbox / Settings) is on top
+    if (ModalRoute.of(context)?.isCurrent != true) return false;
+    // Do not intercept keys when user is typing in a text field
+    final focusedWidget = FocusManager.instance.primaryFocus?.context?.widget;
+    if (focusedWidget is EditableText) return false;
+
+    final key = event.logicalKey;
+    final data = _data!;
+
+    if (key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.pageUp) {
+      if (_subTab == 0 && data.answerPages.length > 1) {
+        _switchPageIndex(
+          (_activePageIndex - 1 + data.answerPages.length) %
+              data.answerPages.length,
+        );
+        return true;
+      } else if (_subTab == 1 && data.originalPages.length > 1) {
+        _switchPageIndex(
+          (_activePageIndex - 1 + data.originalPages.length) %
+              data.originalPages.length,
+        );
+        return true;
+      } else if (widget.exam.papers.length > 1 &&
+          widget.onSelectPaper != null) {
+        final curIdx = widget.exam.papers.indexWhere(
+          (p) => p.paperId == widget.paper.paperId,
+        );
+        if (curIdx >= 0) {
+          final prevIdx =
+              (curIdx - 1 + widget.exam.papers.length) % widget.exam.papers.length;
+          widget.onSelectPaper!(widget.exam.papers[prevIdx]);
+          return true;
+        }
+      }
+    } else if (key == LogicalKeyboardKey.arrowRight ||
+        key == LogicalKeyboardKey.pageDown) {
+      if (_subTab == 0 && data.answerPages.length > 1) {
+        _switchPageIndex((_activePageIndex + 1) % data.answerPages.length);
+        return true;
+      } else if (_subTab == 1 && data.originalPages.length > 1) {
+        _switchPageIndex((_activePageIndex + 1) % data.originalPages.length);
+        return true;
+      } else if (widget.exam.papers.length > 1 &&
+          widget.onSelectPaper != null) {
+        final curIdx = widget.exam.papers.indexWhere(
+          (p) => p.paperId == widget.paper.paperId,
+        );
+        if (curIdx >= 0) {
+          final nextIdx = (curIdx + 1) % widget.exam.papers.length;
+          widget.onSelectPaper!(widget.exam.papers[nextIdx]);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  void _switchPageIndex(int nextIdx) {
+    setState(() {
+      _activePageIndex = nextIdx;
+    });
+    if (_singlePageView) {
+      if (_inspectorScrollCtrl.hasClients) {
+        _inspectorScrollCtrl.jumpTo(0.0);
+      }
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final key = _pageKeys[nextIdx];
+        if (key?.currentContext != null) {
+          Scrollable.ensureVisible(
+            key!.currentContext!,
+            duration: const Duration(milliseconds: 200),
+          );
+        }
+      });
+    }
   }
 
   @override
@@ -3579,6 +3661,7 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
         oldWidget.account.id != widget.account.id ||
         oldWidget.account.activeStudentId != widget.account.activeStudentId) {
       _highlightedQName = null;
+      _activePageIndex = 0;
       _loadInspection();
     }
   }
@@ -3633,13 +3716,9 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
           final hasObj = ov.objectives.any((o) => o.qName == q.name);
           final hasBlk = ov.blocks.any((b) => b.qNames.contains(q.name));
           if (hasObj || hasBlk) {
-            final key = _pageKeys[ov.pageIndex];
-            if (key?.currentContext != null) {
-              Scrollable.ensureVisible(
-                key!.currentContext!,
-                duration: const Duration(milliseconds: 220),
-              );
-            }
+            _switchPageIndex(
+              ov.pageIndex.clamp(0, math.max(0, data.answerPages.length - 1)),
+            );
             return;
           }
         }
@@ -3948,8 +4027,81 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
       ];
     }
 
+    final galleryItems = <LightboxGalleryItem>[
+      for (var pIdx = 0; pIdx < data.answerPages.length; pIdx++)
+        LightboxGalleryItem(
+          imageUrl: data.answerPages[pIdx],
+          caption:
+              '${widget.exam.name} · ${widget.paper.subject} 答题卡 第 ${pIdx + 1} / ${data.answerPages.length} 页',
+          overlay: pIdx < data.pageOverlays.length
+              ? data.pageOverlays[pIdx]
+              : null,
+          initialShowOverlay: _showGradingOverlay,
+          highlightedQuestionName: _highlightedQName,
+        ),
+    ];
+
+    final safePageIdx =
+        _activePageIndex.clamp(0, data.answerPages.length - 1);
+    final visibleIndices = (_singlePageView && data.answerPages.length > 1)
+        ? <int>[safePageIdx]
+        : List<int>.generate(data.answerPages.length, (idx) => idx);
+
     return [
-      for (var i = 0; i < data.answerPages.length; i++)
+      if (data.answerPages.length > 1)
+        Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: Taste.raised,
+            borderRadius: BorderRadius.circular(Taste.radiusControl),
+            border: Border.all(color: Taste.border),
+          ),
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _toolBtn(
+                    '‹ 上一张 (←)',
+                    onTap: () => _switchPageIndex(
+                      (safePageIdx - 1 + data.answerPages.length) %
+                          data.answerPages.length,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  for (var pIdx = 0; pIdx < data.answerPages.length; pIdx++)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: _toolBtn(
+                        '第${pIdx + 1}页',
+                        active: safePageIdx == pIdx,
+                        onTap: () => _switchPageIndex(pIdx),
+                      ),
+                    ),
+                  const SizedBox(width: 2),
+                  _toolBtn(
+                    '下一张 (→) ›',
+                    onTap: () => _switchPageIndex(
+                      (safePageIdx + 1) % data.answerPages.length,
+                    ),
+                  ),
+                ],
+              ),
+              _toolBtn(
+                _singlePageView ? '切换为连续平铺' : '切换为单张翻页',
+                active: !_singlePageView,
+                onTap: () =>
+                    setState(() => _singlePageView = !_singlePageView),
+              ),
+            ],
+          ),
+        ),
+      for (final i in visibleIndices)
         Container(
           key: _pageKeys[i],
           margin: const EdgeInsets.only(bottom: 12),
@@ -3989,32 +4141,23 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                             try {
                               final raw = await widget.client
                                   .fetchOssImageBytes(data.answerPages[i]);
-                              final codec =
-                                  await ui.instantiateImageCodec(raw);
-                              final frame = await codec.getNextFrame();
-                              codec.dispose();
-                              final png = await HfsImageClipboardAndExporter
-                                  .encodeCompositePng(
+                              final ok = await HfsImageClipboardAndExporter
+                                  .copyImageFastToClipboard(
                                 rawBytes: raw,
-                                decodedImage: frame.image,
                                 overlay: i < data.pageOverlays.length
                                     ? data.pageOverlays[i]
                                     : null,
                                 includeOverlay: _showGradingOverlay,
                                 highlightedQuestionName: _highlightedQName,
                               );
-                              frame.image.dispose();
-                              final saved = await HfsImageClipboardAndExporter
-                                  .copyImageToSystemClipboard(
-                                bytes: png,
-                                label:
-                                    '${widget.paper.subject}_答题卡_第${i + 1}页',
-                              );
                               if (!mounted) return;
+                              ScaffoldMessenger.of(context).clearSnackBars();
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: Text('已复制图片到剪贴板（同时存至：$saved）'),
-                                  duration: const Duration(seconds: 3),
+                                  content: Text(
+                                    ok ? '图片已复制到系统剪贴板' : '复制图片到剪贴板失败',
+                                  ),
+                                  duration: const Duration(seconds: 2),
                                 ),
                               );
                             } catch (e) {
@@ -4026,43 +4169,35 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                           },
                         ),
                         _toolBtn(
-                          '导出图片',
+                          '保存至下载',
                           onTap: () async {
                             try {
                               final raw = await widget.client
                                   .fetchOssImageBytes(data.answerPages[i]);
-                              final codec =
-                                  await ui.instantiateImageCodec(raw);
-                              final frame = await codec.getNextFrame();
-                              codec.dispose();
                               final png = await HfsImageClipboardAndExporter
                                   .encodeCompositePng(
                                 rawBytes: raw,
-                                decodedImage: frame.image,
                                 overlay: i < data.pageOverlays.length
                                     ? data.pageOverlays[i]
                                     : null,
                                 includeOverlay: _showGradingOverlay,
                                 highlightedQuestionName: _highlightedQName,
                               );
-                              frame.image.dispose();
                               final saved = await HfsImageClipboardAndExporter
                                   .saveImageToDisk(
                                 bytes: png,
                                 label:
-                                    '${widget.paper.subject}_答题卡_第${i + 1}页',
+                                    '${widget.exam.name}_${widget.paper.subject}_答题卡_第${i + 1}页',
                               );
                               if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('图片已导出至：$saved'),
-                                  duration: const Duration(seconds: 4),
-                                ),
+                              HfsImageClipboardAndExporter.showSavedSnackBar(
+                                context,
+                                saved,
                               );
                             } catch (e) {
                               if (!mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('导出失败：$e')),
+                                SnackBar(content: Text('保存失败：$e')),
                               );
                             }
                           },
@@ -4079,6 +4214,9 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                                 ? data.pageOverlays[i]
                                 : null,
                             initialShowOverlay: _showGradingOverlay,
+                            highlightedQuestionName: _highlightedQName,
+                            galleryItems: galleryItems,
+                            initialIndex: i,
                           ),
                         ),
                       ],
@@ -4089,6 +4227,8 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
               AnswerSheetCanvas(
                 client: widget.client,
                 imageUrl: data.answerPages[i],
+                caption:
+                    '${widget.exam.name}_${widget.paper.subject}_答题卡_第${i + 1}页',
                 overlay:
                     i < data.pageOverlays.length ? data.pageOverlays[i] : null,
                 showOverlay: _showGradingOverlay,
@@ -4107,6 +4247,9 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                       ? data.pageOverlays[i]
                       : null,
                   initialShowOverlay: _showGradingOverlay,
+                  highlightedQuestionName: _highlightedQName,
+                  galleryItems: galleryItems,
+                  initialIndex: i,
                 ),
               ),
             ],
@@ -4118,9 +4261,54 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
   /// Sub-Tab 1: Original Paper Pages (`paperPic`) + Per-Question Origin Stem Images (`pictures`) + Student Crop (`url`) + Xueba Answer (`xbAnswerUrls`)
   List<Widget> _buildOriginalPaperAndBlocksView(PaperInspectionData data) {
     final widgets = <Widget>[];
+    final gallery = <LightboxGalleryItem>[];
+    final indexMap = <String, int>{};
+
+    for (var i = 0; i < data.originalPages.length; i++) {
+      final url = data.originalPages[i];
+      indexMap.putIfAbsent('orig:$i:$url', () => gallery.length);
+      gallery.add(
+        LightboxGalleryItem(
+          imageUrl: url,
+          caption:
+              '${widget.exam.name} · ${widget.paper.subject} 原卷第 ${i + 1} / ${data.originalPages.length} 页',
+          initialShowOverlay: false,
+        ),
+      );
+    }
+    for (final q in data.questions) {
+      for (final u in q.stemUrls) {
+        indexMap.putIfAbsent('q:${q.name}:stem:$u', () => gallery.length);
+        gallery.add(
+          LightboxGalleryItem(
+            imageUrl: u,
+            caption: '${widget.paper.subject} 第${q.name}题 · 原卷题干',
+          ),
+        );
+      }
+      for (final u in q.cropUrls) {
+        indexMap.putIfAbsent('q:${q.name}:crop:$u', () => gallery.length);
+        gallery.add(
+          LightboxGalleryItem(
+            imageUrl: u,
+            caption: '${widget.paper.subject} 第${q.name}题 · 我的作答切块',
+          ),
+        );
+      }
+      for (final u in q.xbAnswerUrls) {
+        indexMap.putIfAbsent('q:${q.name}:xb:$u', () => gallery.length);
+        gallery.add(
+          LightboxGalleryItem(
+            imageUrl: u,
+            caption: '${widget.paper.subject} 第${q.name}题 · 优秀解答',
+          ),
+        );
+      }
+    }
 
     if (data.originalPages.isNotEmpty) {
       for (var i = 0; i < data.originalPages.length; i++) {
+        final gIdx = indexMap['orig:$i:${data.originalPages[i]}'] ?? i;
         widgets.add(
           Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -4151,6 +4339,8 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                 AnswerSheetCanvas(
                   client: widget.client,
                   imageUrl: data.originalPages[i],
+                  caption:
+                      '${widget.exam.name}_${widget.paper.subject}_原卷_第${i + 1}页',
                   showOverlay: false,
                   zoomScale: _zoomScale,
                   onZoomChanged: (newZoom) {
@@ -4162,6 +4352,8 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                     imageUrl: data.originalPages[i],
                     caption:
                         '${widget.exam.name} · ${widget.paper.subject} 原卷第 ${i + 1} 页',
+                    galleryItems: gallery,
+                    initialIndex: gIdx,
                   ),
                 ),
               ],
@@ -4247,7 +4439,7 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                     ],
                     if (q.stemUrls.isNotEmpty) ...[
                       const Text(
-                        '原卷题干扫描（点击放大）：',
+                        '原卷题干扫描（点击放大，支持 ←/→ 切图）：',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
@@ -4264,12 +4456,15 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                             maxHeight: 200,
                             caption:
                                 '${widget.paper.subject} 第${q.name}题 · 原卷题干',
+                            galleryItems: gallery,
+                            galleryIndex:
+                                indexMap['q:${q.name}:stem:$u'] ?? 0,
                           ),
                         ),
                     ],
                     if (q.cropUrls.isNotEmpty) ...[
                       const Text(
-                        '我的作答切块（点击放大）：',
+                        '我的作答切块（点击放大，支持 ←/→ 切图）：',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
@@ -4286,6 +4481,9 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                             maxHeight: 160,
                             caption:
                                 '${widget.paper.subject} 第${q.name}题 · 我的作答切块',
+                            galleryItems: gallery,
+                            galleryIndex:
+                                indexMap['q:${q.name}:crop:$u'] ?? 0,
                           ),
                         ),
                     ],
@@ -4308,6 +4506,9 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                             maxHeight: 160,
                             caption:
                                 '${widget.paper.subject} 第${q.name}题 · 优秀解答',
+                            galleryItems: gallery,
+                            galleryIndex:
+                                indexMap['q:${q.name}:xb:$u'] ?? 0,
                           ),
                         ),
                     ],

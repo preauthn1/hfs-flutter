@@ -1039,6 +1039,7 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: DropdownButtonFormField<String>(
+                      key: ValueKey('bind_acc_${_targetAccount.id}'),
                       initialValue: _targetAccount.id,
                       isDense: true,
                       decoration: InputDecoration(
@@ -1193,6 +1194,7 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                           ),
                           if (_schools.isNotEmpty)
                             DropdownButtonFormField<String>(
+                              key: ValueKey('school_sel_${_schools.first.id}'),
                               initialValue: _schools.first.id,
                               isExpanded: true,
                               decoration: const InputDecoration(
@@ -1845,9 +1847,56 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
               ],
             ),
           )
-        else
-          for (var i = 0; i < _items.length; i++)
-            _buildWrongQuestionCard(i + 1, _items[i]),
+        else ...[
+          (() {
+            final gallery = <LightboxGalleryItem>[];
+            final indexMap = <String, int>{};
+            for (final it in _items) {
+              for (final u in it.stemPictures) {
+                indexMap.putIfAbsent('${it.id}:stem:$u', () => gallery.length);
+                gallery.add(
+                  LightboxGalleryItem(
+                    imageUrl: u,
+                    caption:
+                        '${it.examName} · $_selectedSubject 第${it.shortName}题 原卷题干',
+                  ),
+                );
+              }
+              for (final u in it.myAnswerPictures) {
+                indexMap.putIfAbsent('${it.id}:ans:$u', () => gallery.length);
+                gallery.add(
+                  LightboxGalleryItem(
+                    imageUrl: u,
+                    caption:
+                        '${it.examName} · $_selectedSubject 第${it.shortName}题 我的作答',
+                  ),
+                );
+              }
+              for (final u in it.xbAnswerPictures) {
+                indexMap.putIfAbsent('${it.id}:xb:$u', () => gallery.length);
+                gallery.add(
+                  LightboxGalleryItem(
+                    imageUrl: u,
+                    caption:
+                        '${it.examName} · $_selectedSubject 第${it.shortName}题 优秀解答',
+                  ),
+                );
+              }
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < _items.length; i++)
+                  _buildWrongQuestionCard(
+                    i + 1,
+                    _items[i],
+                    gallery: gallery,
+                    indexMap: indexMap,
+                  ),
+              ],
+            );
+          })(),
+        ],
 
         const SizedBox(height: 16),
         // 3. Account & Upstream Diagnostics Details
@@ -1856,7 +1905,12 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
     );
   }
 
-  Widget _buildWrongQuestionCard(int idx, WrongQuestionItem item) {
+  Widget _buildWrongQuestionCard(
+    int idx,
+    WrongQuestionItem item, {
+    required List<LightboxGalleryItem> gallery,
+    required Map<String, int> indexMap,
+  }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -2012,6 +2066,8 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
                         maxHeight: 220,
                         caption:
                             '${item.examName} · $_selectedSubject 第${item.shortName}题 原卷题干',
+                        galleryItems: gallery,
+                        galleryIndex: indexMap['${item.id}:stem:$u'] ?? 0,
                       ),
                     ),
                 ],
@@ -2035,6 +2091,8 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
                         maxHeight: 180,
                         caption:
                             '${item.examName} · $_selectedSubject 第${item.shortName}题 我的作答',
+                        galleryItems: gallery,
+                        galleryIndex: indexMap['${item.id}:ans:$u'] ?? 0,
                       ),
                     ),
                 ],
@@ -2058,6 +2116,8 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
                         maxHeight: 180,
                         caption:
                             '${item.examName} · $_selectedSubject 第${item.shortName}题 优秀解答',
+                        galleryItems: gallery,
+                        galleryIndex: indexMap['${item.id}:xb:$u'] ?? 0,
                       ),
                     ),
                 ],
@@ -2140,16 +2200,18 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
   }
 }
 
-/// Classmates Roster Dialog (`GET /v2/students/classmates`)
+/// Classmates Roster Dialog (`GET /v2/students/classmates`) with multi-student/class switcher
 class ClassmatesRosterDialog extends StatefulWidget {
   final HfsUpstreamClient client;
   final HfsAccount account;
+  final List<HfsAccount> accounts;
   final StudentInfo? currentStudent;
 
   const ClassmatesRosterDialog({
     super.key,
     required this.client,
     required this.account,
+    this.accounts = const [],
     this.currentStudent,
   });
 
@@ -2158,6 +2220,8 @@ class ClassmatesRosterDialog extends StatefulWidget {
 }
 
 class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
+  late HfsAccount _selectedAccount;
+  late StudentInfo? _selectedStudent;
   List<ClassmateBindEntry> _roster = const [];
   String _search = '';
   bool _loading = true;
@@ -2166,7 +2230,23 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
   @override
   void initState() {
     super.initState();
+    _selectedAccount = widget.account;
+    _selectedStudent =
+        widget.currentStudent ?? widget.account.activeStudent;
     _load();
+  }
+
+  List<({HfsAccount acc, StudentInfo stu})> _allBoundStudents() {
+    final sourceAccounts = widget.accounts.isNotEmpty
+        ? widget.accounts
+        : <HfsAccount>[widget.account];
+    final out = <({HfsAccount acc, StudentInfo stu})>[];
+    for (final a in sourceAccounts) {
+      for (final s in a.students) {
+        out.add((acc: a, stu: s));
+      }
+    }
+    return out;
   }
 
   Future<void> _load() async {
@@ -2176,8 +2256,8 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
     });
     try {
       final list = await widget.client.fetchClassmates(
-        widget.account,
-        studentId: widget.currentStudent?.studentId ?? '',
+        _selectedAccount,
+        studentId: _selectedStudent?.studentId ?? '',
       );
       if (!mounted) return;
       setState(() {
@@ -2195,6 +2275,7 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final allStudents = _allBoundStudents();
     final filtered = _roster.where((c) {
       if (_search.trim().isEmpty) return true;
       final q = _search.trim();
@@ -2202,6 +2283,12 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
     }).toList();
     final stuBoundCnt = _roster.where((c) => c.hasStudentAccount).length;
     final parBoundCnt = _roster.where((c) => c.hasParentAccount).length;
+    final resolvedClassName = (_roster.isNotEmpty &&
+            _roster.first.className.isNotEmpty)
+        ? '${_roster.first.grade}${_roster.first.className}'
+        : (_selectedStudent?.className.isNotEmpty == true
+            ? '${_selectedStudent!.grade}${_selectedStudent!.className}'
+            : '当前班级');
 
     return Dialog(
       backgroundColor: Taste.surface,
@@ -2209,7 +2296,7 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
         borderRadius: BorderRadius.circular(Taste.radiusCard),
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 640, maxHeight: 680),
+        constraints: const BoxConstraints(maxWidth: 680, maxHeight: 720),
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -2219,7 +2306,7 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                 children: [
                   Expanded(
                     child: Text(
-                      '同班同学名册 (${widget.currentStudent?.className ?? "当前班级"} · 共 ${_roster.length} 人)',
+                      '同班同学名册 ($resolvedClassName · 共 ${_roster.length} 人)',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -2232,6 +2319,43 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                   ),
                 ],
               ),
+              if (allStudents.length > 1) ...[
+                const SizedBox(height: 6),
+                IsolatedHorizontalScroll(
+                  convertVerticalWheelToHorizontal: true,
+                  child: Row(
+                    children: [
+                      const Text(
+                        '切换班级/学生：',
+                        style: TextStyle(fontSize: 12, color: Taste.muted),
+                      ),
+                      const SizedBox(width: 6),
+                      for (final item in allStudents)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: ChoiceChip(
+                            visualDensity: VisualDensity.compact,
+                            selected:
+                                _selectedAccount.id == item.acc.id &&
+                                    _selectedStudent?.studentId ==
+                                        item.stu.studentId,
+                            label: Text(
+                              '${item.stu.studentName} (${item.stu.grade}${item.stu.className})',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            onSelected: (_) {
+                              setState(() {
+                                _selectedAccount = item.acc;
+                                _selectedStudent = item.stu;
+                              });
+                              _load();
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -2364,6 +2488,8 @@ class AppSettingsDialog extends StatefulWidget {
   final AppSettings settings;
   final HfsUpstreamClient client;
   final HfsAccount? activeAccount;
+  final List<HfsAccount> accounts;
+  final StudentInfo? activeStudent;
   final ValueChanged<AppSettings> onSaveSettings;
   final Future<void> Function() onClearCache;
   final Future<String> Function() onExportConfigJson;
@@ -2374,6 +2500,8 @@ class AppSettingsDialog extends StatefulWidget {
     required this.settings,
     required this.client,
     required this.activeAccount,
+    this.accounts = const [],
+    this.activeStudent,
     required this.onSaveSettings,
     required this.onClearCache,
     required this.onExportConfigJson,
@@ -2387,6 +2515,7 @@ class AppSettingsDialog extends StatefulWidget {
 class _AppSettingsDialogState extends State<AppSettingsDialog> {
   late AppSettings _draft;
   String _selectedDiagEndpoint = '/v2/user-center/user-snapshot?devicetype=1';
+  late String _selectedDiagTargetKey;
   String? _diagOutput;
   bool _runningDiag = false;
   String? _statusMsg;
@@ -2418,23 +2547,73 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
     ),
   ];
 
+  List<({String key, HfsAccount account, StudentInfo? student, String label})>
+      _buildDiagTargets() {
+    final sourceAccounts = widget.accounts.isNotEmpty
+        ? widget.accounts
+        : (widget.activeAccount != null
+            ? <HfsAccount>[widget.activeAccount!]
+            : const <HfsAccount>[]);
+    final targets =
+        <({String key, HfsAccount account, StudentInfo? student, String label})>[];
+    for (final acc in sourceAccounts) {
+      if (acc.students.isEmpty) {
+        targets.add((
+          key: '${acc.id}:',
+          account: acc,
+          student: null,
+          label: '[${acc.displayLabel}] 默认会话',
+        ));
+      } else {
+        for (final stu in acc.students) {
+          final cls = '${stu.grade}${stu.className}'.trim();
+          final school = stu.schoolName.trim();
+          final meta = [
+            if (school.isNotEmpty) school,
+            if (cls.isNotEmpty) '$cls班',
+          ].join(' · ');
+          targets.add((
+            key: '${acc.id}:${stu.studentId}',
+            account: acc,
+            student: stu,
+            label: meta.isNotEmpty
+                ? '[${acc.displayLabel}] ${stu.studentName} ($meta)'
+                : '[${acc.displayLabel}] ${stu.studentName}',
+          ));
+        }
+      }
+    }
+    return targets;
+  }
+
   @override
   void initState() {
     super.initState();
     _draft = widget.settings;
+    final accId = widget.activeAccount?.id ?? '';
+    final stuId = widget.activeStudent?.studentId ??
+        widget.activeAccount?.desiredStudentId ??
+        widget.activeAccount?.activeStudentId ??
+        '';
+    _selectedDiagTargetKey = '$accId:$stuId';
   }
 
   Future<void> _runDiagnostic() async {
-    final acc = widget.activeAccount;
-    if (acc == null) return;
+    final targets = _buildDiagTargets();
+    if (targets.isEmpty) return;
+    final chosen = targets.firstWhere(
+      (t) => t.key == _selectedDiagTargetKey,
+      orElse: () => targets.first,
+    );
     setState(() {
       _runningDiag = true;
       _diagOutput = null;
     });
     try {
       final res = await widget.client.fetchDiagnosticEndpoint(
-        acc,
+        chosen.account,
         _selectedDiagEndpoint,
+        studentId: chosen.student?.studentId ?? '',
       );
       if (!mounted) return;
       setState(() {
@@ -2468,45 +2647,10 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
       return f.path;
     }
 
-    final candidates = <String>[];
-    final env = Platform.environment;
-    final userProfile = env['USERPROFILE'] ?? '';
-    final home = env['HOME'] ?? '';
-    if (userProfile.isNotEmpty) {
-      candidates.add('$userProfile\\Downloads\\$defaultFileName');
-      candidates.add('$userProfile\\Desktop\\$defaultFileName');
-    }
-    if (home.isNotEmpty) {
-      candidates.add('$home/Downloads/$defaultFileName');
-      candidates.add('$home/Desktop/$defaultFileName');
-      candidates.add('$home/$defaultFileName');
-    }
-    if (Platform.isAndroid) {
-      candidates.add('/sdcard/Download/$defaultFileName');
-      candidates.add('/storage/emulated/0/Download/$defaultFileName');
-    }
-    candidates.add(
-      '${Directory.current.path}${Platform.pathSeparator}$defaultFileName',
-    );
-    candidates.add(
-      '${Directory.systemTemp.path}${Platform.pathSeparator}$defaultFileName',
-    );
-
-    for (final p in candidates) {
-      try {
-        final f = File(p);
-        if (await f.parent.exists()) {
-          await f.writeAsString(content);
-          return f.path;
-        }
-      } catch (_) {}
-    }
-
-    final fallback = File(
-      '${Directory.systemTemp.path}${Platform.pathSeparator}$defaultFileName',
-    );
-    await fallback.writeAsString(content);
-    return fallback.path;
+    final dlDir = await HfsImageClipboardAndExporter.resolveDownloadsDirectory();
+    final f = File('${dlDir.path}${Platform.pathSeparator}$defaultFileName');
+    await f.writeAsString(content, flush: true);
+    return f.path;
   }
 
   Future<void> _exportCredentialFileQuick() async {
@@ -2855,7 +2999,7 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
                         ),
                       ),
                     ],
-                    if (widget.activeAccount != null) ...[
+                    if (_buildDiagTargets().isNotEmpty) ...[
                       const Divider(height: 24, color: Taste.border),
                       const Text(
                         '好分数官方上游只读接口在线探测',
@@ -2866,42 +3010,92 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              initialValue: _selectedDiagEndpoint,
-                              isExpanded: true,
-                              isDense: true,
-                              decoration: const InputDecoration(
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 6),
+                      Builder(
+                        builder: (ctx) {
+                          final diagTargets = _buildDiagTargets();
+                          final validKey = diagTargets.any(
+                            (t) => t.key == _selectedDiagTargetKey,
+                          )
+                              ? _selectedDiagTargetKey
+                              : diagTargets.first.key;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              DropdownButtonFormField<String>(
+                                key: ValueKey('diag_target_$validKey'),
+                                initialValue: validKey,
+                                isExpanded: true,
+                                isDense: true,
+                                decoration: const InputDecoration(
+                                  labelText: '探测目标学生 / 所在班级',
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 8),
+                                ),
+                                items: [
+                                  for (final t in diagTargets)
+                                    DropdownMenuItem(
+                                      value: t.key,
+                                      child: Text(
+                                        t.label,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    ),
+                                ],
+                                onChanged: (v) {
+                                  if (v != null) {
+                                    setState(() {
+                                      _selectedDiagTargetKey = v;
+                                    });
+                                    _runDiagnostic();
+                                  }
+                                },
                               ),
-                              items: [
-                                for (final ep in _diagEndpoints)
-                                  DropdownMenuItem(
-                                    value: ep.path,
-                                    child: Text(ep.label,
-                                        style: const TextStyle(fontSize: 12)),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      initialValue: _selectedDiagEndpoint,
+                                      isExpanded: true,
+                                      isDense: true,
+                                      decoration: const InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 6),
+                                      ),
+                                      items: [
+                                        for (final ep in _diagEndpoints)
+                                          DropdownMenuItem(
+                                            value: ep.path,
+                                            child: Text(ep.label,
+                                                style: const TextStyle(
+                                                    fontSize: 12)),
+                                          ),
+                                      ],
+                                      onChanged: (v) {
+                                        if (v != null) {
+                                          setState(
+                                              () => _selectedDiagEndpoint = v);
+                                        }
+                                      },
+                                    ),
                                   ),
-                              ],
-                              onChanged: (v) {
-                                if (v != null) {
-                                  setState(() => _selectedDiagEndpoint = v);
-                                }
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          OutlinedButton(
-                            onPressed: _runningDiag ? null : _runDiagnostic,
-                            child: Text(
-                              _runningDiag ? '请求中…' : '直连探测',
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ),
-                        ],
+                                  const SizedBox(width: 8),
+                                  OutlinedButton(
+                                    onPressed:
+                                        _runningDiag ? null : _runDiagnostic,
+                                    child: Text(
+                                      _runningDiag ? '请求中…' : '直连探测',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          );
+                        },
                       ),
                       if (_diagOutput != null) ...[
                         const SizedBox(height: 8),
@@ -2978,12 +3172,14 @@ class _ChartPoint {
 class ScoreTrendAnalyticsCard extends StatefulWidget {
   final DashboardData dashboard;
   final ExamRecord? selectedExam;
-  final ValueChanged<ExamRecord> onSelectExam;
+  final String? selectedSubject;
+  final void Function(ExamRecord exam, {String? preferredSubject}) onSelectExam;
 
   const ScoreTrendAnalyticsCard({
     super.key,
     required this.dashboard,
     required this.selectedExam,
+    this.selectedSubject,
     required this.onSelectExam,
   });
 
@@ -2997,12 +3193,12 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
   bool _usePercentageRatio = false;
   int? _hoveredIndex;
 
-  List<_ChartPoint> _buildPoints() {
+  List<_ChartPoint> _buildPointsForSubject(String subject) {
     // Chronological order (oldest -> newest)
     final chronological = widget.dashboard.exams.reversed.toList();
     final pts = <_ChartPoint>[];
     for (final ex in chronological) {
-      if (_metricSubject == '总分') {
+      if (subject == '总分') {
         if (ex.score <= 0 && ex.papers.isEmpty) continue;
         final val = _usePercentageRatio
             ? (ex.ratio ??
@@ -3021,7 +3217,7 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
       } else {
         PaperScore? match;
         for (final p in ex.papers) {
-          if (p.subject == _metricSubject) {
+          if (p.subject == subject) {
             match = p;
             break;
           }
@@ -3046,6 +3242,26 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
       }
     }
     return pts;
+  }
+
+  List<_ChartPoint> _buildPoints() => _buildPointsForSubject(_metricSubject);
+
+  void _handleSelectSubjectDimension(String newSubject) {
+    setState(() {
+      _metricSubject = newSubject;
+      _hoveredIndex = null;
+    });
+    final pts = _buildPointsForSubject(newSubject);
+    if (pts.isEmpty) return;
+
+    final curId = widget.selectedExam?.examId ?? '';
+    final matchInPoints = pts.where((p) => p.exam.examId == curId).toList();
+    final targetExam =
+        matchInPoints.isNotEmpty ? matchInPoints.first.exam : pts.last.exam;
+    widget.onSelectExam(
+      targetExam,
+      preferredSubject: newSubject == '总分' ? null : newSubject,
+    );
   }
 
   @override
@@ -3158,6 +3374,7 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
               ),
             ),
             child: IsolatedHorizontalScroll(
+              convertVerticalWheelToHorizontal: true,
               child: Row(
                 children: [
                   const Text(
@@ -3172,10 +3389,7 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
                         visualDensity: VisualDensity.compact,
                         selected: _metricSubject == s,
                         label: Text(s, style: const TextStyle(fontSize: 12)),
-                        onSelected: (_) => setState(() {
-                          _metricSubject = s;
-                          _hoveredIndex = null;
-                        }),
+                        onSelected: (_) => _handleSelectSubjectDimension(s),
                       ),
                     ),
                 ],
@@ -3338,7 +3552,11 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
                   onTapDown: (details) {
                     final idx = hitIndexForDx(details.localPosition.dx);
                     setState(() => _hoveredIndex = idx);
-                    widget.onSelectExam(points[idx].exam);
+                    widget.onSelectExam(
+                      points[idx].exam,
+                      preferredSubject:
+                          _metricSubject == '总分' ? null : _metricSubject,
+                    );
                   },
                   child: CustomPaint(
                     size: Size(box.maxWidth, 196),
@@ -3381,52 +3599,72 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
         const SizedBox(height: 10),
         for (final p in exam.papers)
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            padding: const EdgeInsets.only(bottom: 6),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(4),
+              onTap: () {
+                setState(() {
+                  _metricSubject = p.subject;
+                  _hoveredIndex = null;
+                });
+                widget.onSelectExam(exam, preferredSubject: p.subject);
+              },
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      p.subject,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: Taste.text,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          p.subject,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: (_metricSubject == p.subject ||
+                                    widget.selectedSubject == p.subject)
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: (_metricSubject == p.subject ||
+                                    widget.selectedSubject == p.subject)
+                                ? Taste.accent
+                                : Taste.text,
+                          ),
+                        ),
+                        Text(
+                          '${p.scoreS}/${round1(p.manfen)} (${p.ratio ?? 0}%)',
+                          style: Taste.numStyle(
+                            size: 11,
+                            weight: FontWeight.w700,
+                            color: Taste.muted,
+                          ),
+                        ),
+                      ],
                     ),
-                    Text(
-                      '${p.scoreS}/${round1(p.manfen)} (${p.ratio ?? 0}%)',
-                      style: Taste.numStyle(
-                        size: 11,
-                        weight: FontWeight.w700,
-                        color: Taste.muted,
+                    const SizedBox(height: 4),
+                    Container(
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: Taste.raised,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: ((p.ratio ?? 0) / 100.0).clamp(0.0, 1.0),
+                        child: Container(
+                          color: (p.ratio ?? 0) >= 85
+                              ? Taste.positive
+                              : ((p.ratio ?? 0) >= 60
+                                  ? Taste.accent
+                                  : Taste.chart3),
+                        ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Container(
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: Taste.raised,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: FractionallySizedBox(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: ((p.ratio ?? 0) / 100.0).clamp(0.0, 1.0),
-                    child: Container(
-                      color: (p.ratio ?? 0) >= 85
-                          ? Taste.positive
-                          : ((p.ratio ?? 0) >= 60
-                              ? Taste.accent
-                              : Taste.chart3),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
       ],

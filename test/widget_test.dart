@@ -184,5 +184,14 @@ void main() {
     expect(find.text('好分数成绩工作台'), findsOneWidget);
     expect(find.text('总分 历次成绩变化趋势折线图与学科均衡度'), findsOneWidget);
     expect(find.text('语文 · 试卷与答题卡调阅'), findsOneWidget);
+
+    // 3. Clicking '数学' in 趋势维度 immediately switches the right-side inspector to 数学
+    final mathChip = find.widgetWithText(ChoiceChip, '数学');
+    expect(mathChip, findsOneWidget);
+    await tester.tap(mathChip);
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.text('数学 历次成绩变化趋势折线图与学科均衡度'), findsOneWidget);
+    expect(find.text('数学 · 试卷与答题卡调阅'), findsOneWidget);
   });
 }

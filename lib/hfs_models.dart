@@ -324,7 +324,9 @@ class HfsAccount {
           .map((e) => StudentInfo.fromUpstream(Map<String, dynamic>.from(e)))
           .toList(),
       activeStudentId: strOf(m['activeStudentId']),
-      desiredStudentId: strOf(m['desiredStudentId']),
+      desiredStudentId: strOf(m['desiredStudentId']).isNotEmpty
+          ? strOf(m['desiredStudentId'])
+          : strOf(m['activeStudentId']),
       studentSnapshots: snaps,
       state: strOf(m['state'], 'connected'),
       lastRefreshAt: intOf(m['lastRefreshAt']),
@@ -599,6 +601,7 @@ class WrongQuestionItem {
   });
 
   double get lostScore => math.max(0, round2(score - myScore));
+  String get id => questionId.isNotEmpty ? questionId : shortName;
 }
 
 class DashboardData {
@@ -874,6 +877,8 @@ class ClassmateBindEntry {
   final String name;
   final int sex;
   final bool isMember;
+  final String grade;
+  final String className;
   final bool hasStudentAccount;
   final bool hasParentAccount;
 
@@ -882,6 +887,8 @@ class ClassmateBindEntry {
     required this.name,
     required this.sex,
     required this.isMember,
+    this.grade = '',
+    this.className = '',
     required this.hasStudentAccount,
     required this.hasParentAccount,
   });
@@ -892,6 +899,10 @@ class ClassmateBindEntry {
       name: strOf(m['name'], '同学'),
       sex: intOf(m['sex']),
       isMember: boolOf(m['isMember']),
+      grade: strOf(m['grade']),
+      className: strOf(m['className']).isNotEmpty
+          ? strOf(m['className'])
+          : strOf(m['class']),
       hasStudentAccount: m['bindStudent'] is Map,
       hasParentAccount: m['bindParent'] is Map,
     );

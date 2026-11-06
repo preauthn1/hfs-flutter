@@ -1,7 +1,7 @@
 name: hfs_flutter
 description: "Haofenshu Native Flutter Client (Direct HFS Upstream Only, Mobile + Desktop)"
 publish_to: 'none'
-version: 2.1.0+3
+version: 2.2.0+4
 
 environment:
   sdk: '>=3.6.0 <4.0.0'

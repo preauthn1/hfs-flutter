@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -7,38 +8,73 @@ import 'package:flutter/services.dart';
 
 import 'hfs_client.dart';
 import 'hfs_models.dart';
+import 'win32_native.dart';
+
+/// Gallery item descriptor for multi-image Lightbox navigation (`←` / `→` keyboard switching)
+class LightboxGalleryItem {
+  final String imageUrl;
+  final String caption;
+  final PageOverlayData? overlay;
+  final bool initialShowOverlay;
+  final String? highlightedQuestionName;
+
+  const LightboxGalleryItem({
+    required this.imageUrl,
+    required this.caption,
+    this.overlay,
+    this.initialShowOverlay = true,
+    this.highlightedQuestionName,
+  });
+}
 
 /// Shared helper for right-click / long-press / toolbar image copy & export
 class HfsImageClipboardAndExporter {
   static String _sanitizeName(String raw) {
-    final cleaned =
-        raw.replaceAll(RegExp(r'[^\u4e00-\u9fa5a-zA-Z0-9_-]'), '_');
-    return cleaned.isEmpty
-        ? 'hfs_sheet'
-        : (cleaned.length > 42 ? cleaned.substring(0, 42) : cleaned);
+    final cleaned = raw
+        .trim()
+        .replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_')
+        .replaceAll(RegExp(r'\s+'), '_');
+    if (cleaned.isEmpty) return '好分数试卷';
+    return cleaned.length > 64 ? cleaned.substring(0, 64) : cleaned;
   }
 
-  /// Render [decodedImage] together with [overlay] (when [includeOverlay] is true) into PNG bytes
-  static Future<Uint8List> encodeCompositePng({
+  /// Render [decodedImage] (or decode [rawBytes] if null) together with [overlay]
+  /// (when [includeOverlay] is true) into a `ui.Image`.
+  /// Note: caller must dispose the returned `ui.Image` ONLY if [ownsReturnedImage] is true.
+  static Future<({ui.Image image, bool shouldDispose})> _prepareTargetImage({
     required Uint8List rawBytes,
     ui.Image? decodedImage,
     PageOverlayData? overlay,
     bool includeOverlay = true,
     String? highlightedQuestionName,
   }) async {
-    if (!includeOverlay || overlay == null || decodedImage == null) {
-      return rawBytes;
+    ui.Image baseImg;
+    bool decodedHere = false;
+    if (decodedImage != null) {
+      baseImg = decodedImage;
+    } else {
+      final codec = await ui.instantiateImageCodec(rawBytes);
+      final frame = await codec.getNextFrame();
+      codec.dispose();
+      baseImg = frame.image;
+      decodedHere = true;
     }
+
+    if (!includeOverlay || overlay == null) {
+      return (image: baseImg, shouldDispose: decodedHere);
+    }
+
     final recorder = ui.PictureRecorder();
     final size = Size(
-      decodedImage.width.toDouble(),
-      decodedImage.height.toDouble(),
+      baseImg.width.toDouble(),
+      baseImg.height.toDouble(),
     );
     final canvas = Canvas(
       recorder,
       Rect.fromLTWH(0, 0, size.width, size.height),
     );
-    canvas.drawImage(decodedImage, Offset.zero, Paint());
+    canvas.drawColor(Colors.white, BlendMode.src);
+    canvas.drawImage(baseImg, Offset.zero, Paint());
     final painter = _GradingOverlayPainter(
       imageSize: size,
       overlay: overlay,
@@ -46,83 +82,134 @@ class HfsImageClipboardAndExporter {
     );
     painter.paint(canvas, size);
     final picture = recorder.endRecording();
-    final rendered = await picture.toImage(
-      decodedImage.width,
-      decodedImage.height,
-    );
-    final byteData = await rendered.toByteData(format: ui.ImageByteFormat.png);
-    rendered.dispose();
-    if (byteData == null) return rawBytes;
-    return byteData.buffer.asUint8List();
+    final rendered = await picture.toImage(baseImg.width, baseImg.height);
+    if (decodedHere) {
+      baseImg.dispose();
+    }
+    return (image: rendered, shouldDispose: true);
   }
 
-  /// Save image bytes to Downloads / Desktop / temp directory and return absolute path
-  static Future<String> saveImageToDisk({
+  /// Encode genuine PNG bytes (converting JPEG/GIF raw bytes into real PNG even when overlay is off)
+  static Future<Uint8List> encodeCompositePng({
+    required Uint8List rawBytes,
+    ui.Image? decodedImage,
+    PageOverlayData? overlay,
+    bool includeOverlay = true,
+    String? highlightedQuestionName,
+  }) async {
+    // Fast path: if no overlay is requested and rawBytes is already a valid PNG header, return directly
+    if ((!includeOverlay || overlay == null) &&
+        rawBytes.length > 8 &&
+        rawBytes[0] == 0x89 &&
+        rawBytes[1] == 0x50 &&
+        rawBytes[2] == 0x4E &&
+        rawBytes[3] == 0x47) {
+      return rawBytes;
+    }
+
+    final prep = await _prepareTargetImage(
+      rawBytes: rawBytes,
+      decodedImage: decodedImage,
+      overlay: overlay,
+      includeOverlay: includeOverlay,
+      highlightedQuestionName: highlightedQuestionName,
+    );
+    try {
+      final byteData =
+          await prep.image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return rawBytes;
+      return byteData.buffer.asUint8List();
+    } finally {
+      if (prep.shouldDispose) {
+        prep.image.dispose();
+      }
+    }
+  }
+
+  /// Copy image bitmap directly into OS system clipboard in < 10ms on Windows (`CF_DIB` via Dart FFI).
+  /// NEVER writes any file to the user's Downloads or Desktop directory!
+  static Future<bool> copyImageFastToClipboard({
+    required Uint8List rawBytes,
+    ui.Image? decodedImage,
+    PageOverlayData? overlay,
+    bool includeOverlay = true,
+    String? highlightedQuestionName,
+  }) async {
+    if (Platform.isWindows) {
+      final prep = await _prepareTargetImage(
+        rawBytes: rawBytes,
+        decodedImage: decodedImage,
+        overlay: overlay,
+        includeOverlay: includeOverlay,
+        highlightedQuestionName: highlightedQuestionName,
+      );
+      try {
+        final w = prep.image.width;
+        final h = prep.image.height;
+        final rawRgba =
+            await prep.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+        if (rawRgba != null) {
+          final ok = Win32NativeBridge.copyRgbaToClipboard(
+            width: w,
+            height: h,
+            rgbaBytes: rawRgba.buffer.asUint8List(),
+          );
+          if (ok) return true;
+        }
+      } finally {
+        if (prep.shouldDispose) {
+          prep.image.dispose();
+        }
+      }
+    }
+
+    // Fallback for Linux / macOS: use a temporary file in systemTemp and delete it immediately after copying
+    final pngBytes = await encodeCompositePng(
+      rawBytes: rawBytes,
+      decodedImage: decodedImage,
+      overlay: overlay,
+      includeOverlay: includeOverlay,
+      highlightedQuestionName: highlightedQuestionName,
+    );
+    return copyImageToSystemClipboard(bytes: pngBytes, label: 'clipboard_tmp');
+  }
+
+  /// Copy pre-encoded PNG bytes to system clipboard WITHOUT saving anything to Downloads!
+  static Future<bool> copyImageToSystemClipboard({
     required Uint8List bytes,
     required String label,
-    String ext = 'png',
   }) async {
-    final ts = DateTime.now()
-        .toIso8601String()
-        .replaceAll(':', '-')
-        .split('.')
-        .first;
-    final baseName = '${_sanitizeName(label)}_$ts.$ext';
-    final env = Platform.environment;
-    final candidates = <String>[
-      if ((env['USERPROFILE'] ?? '').isNotEmpty)
-        '${env['USERPROFILE']}\\Downloads\\$baseName',
-      if ((env['USERPROFILE'] ?? '').isNotEmpty)
-        '${env['USERPROFILE']}\\Desktop\\$baseName',
-      if ((env['HOME'] ?? '').isNotEmpty)
-        '${env['HOME']}/Downloads/$baseName',
-      if ((env['HOME'] ?? '').isNotEmpty) '${env['HOME']}/Desktop/$baseName',
-      if ((env['HOME'] ?? '').isNotEmpty) '${env['HOME']}/$baseName',
-      if (Platform.isAndroid) '/sdcard/Download/$baseName',
-      if (Platform.isAndroid) '/storage/emulated/0/Download/$baseName',
-      '${Directory.current.path}${Platform.pathSeparator}$baseName',
-      '${Directory.systemTemp.path}${Platform.pathSeparator}$baseName',
-    ];
-    for (final p in candidates) {
+    if (Platform.isWindows) {
       try {
-        final f = File(p);
-        if (await f.parent.exists()) {
-          await f.writeAsBytes(bytes);
-          return f.path;
+        final codec = await ui.instantiateImageCodec(bytes);
+        final frame = await codec.getNextFrame();
+        codec.dispose();
+        final img = frame.image;
+        final rgba = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
+        final w = img.width;
+        final h = img.height;
+        img.dispose();
+        if (rgba != null) {
+          final ok = Win32NativeBridge.copyRgbaToClipboard(
+            width: w,
+            height: h,
+            rgbaBytes: rgba.buffer.asUint8List(),
+          );
+          if (ok) return true;
         }
       } catch (_) {}
     }
-    final fallback = File(
-      '${Directory.systemTemp.path}${Platform.pathSeparator}$baseName',
-    );
-    await fallback.writeAsBytes(bytes);
-    return fallback.path;
-  }
 
-  /// Copy image bitmap directly into OS system clipboard (Windows / macOS / Linux X11 & Wayland)
-  /// Also copies the saved file path as text fallback.
-  static Future<String> copyImageToSystemClipboard({
-    required Uint8List bytes,
-    required String label,
-  }) async {
-    final savedPath = await saveImageToDisk(
-      bytes: bytes,
-      label: label,
-      ext: 'png',
-    );
-    bool bitmapCopied = false;
+    File? tmpFile;
     try {
-      if (Platform.isWindows) {
-        final escaped = savedPath.replaceAll("'", "''");
-        final res = await Process.run('powershell', <String>[
-          '-NoProfile',
-          '-NonInteractive',
-          '-STA',
-          '-Command',
-          "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; \$img = [System.Drawing.Image]::FromFile('$escaped'); [System.Windows.Forms.Clipboard]::SetImage(\$img); \$img.Dispose()",
-        ]);
-        bitmapCopied = res.exitCode == 0;
-      } else if (Platform.isLinux) {
+      final sep = Platform.pathSeparator;
+      tmpFile = File(
+        '${Directory.systemTemp.path}${sep}hfs_clip_${DateTime.now().microsecondsSinceEpoch}.png',
+      );
+      await tmpFile.writeAsBytes(bytes, flush: true);
+      final tmpPath = tmpFile.path;
+
+      if (Platform.isLinux) {
         try {
           final xclip = await Process.run('xclip', <String>[
             '-selection',
@@ -130,33 +217,128 @@ class HfsImageClipboardAndExporter {
             '-t',
             'image/png',
             '-i',
-            savedPath,
+            tmpPath,
           ]);
-          bitmapCopied = xclip.exitCode == 0;
+          if (xclip.exitCode == 0) return true;
         } catch (_) {}
-        if (!bitmapCopied) {
-          try {
-            final wl = await Process.run(
-              'bash',
-              <String>['-lc', 'wl-copy --type image/png < "$savedPath"'],
-            );
-            bitmapCopied = wl.exitCode == 0;
-          } catch (_) {}
-        }
+        try {
+          final wl = await Process.run(
+            'bash',
+            <String>['-lc', 'wl-copy --type image/png < "$tmpPath"'],
+          );
+          if (wl.exitCode == 0) return true;
+        } catch (_) {}
       } else if (Platform.isMacOS) {
-        final escaped = savedPath.replaceAll('"', '\\"');
+        final escaped = tmpPath.replaceAll('"', '\\"');
         final osa = await Process.run('osascript', <String>[
           '-e',
           'set the clipboard to (read (POSIX file "$escaped") as «class PNGf»)',
         ]);
-        bitmapCopied = osa.exitCode == 0;
+        if (osa.exitCode == 0) return true;
       }
-    } catch (_) {}
-
-    if (!bitmapCopied) {
-      await Clipboard.setData(ClipboardData(text: savedPath));
+    } catch (_) {
+    } finally {
+      if (tmpFile != null) {
+        unawaited(tmpFile.delete().catchError((_) => tmpFile!));
+      }
     }
-    return savedPath;
+    return false;
+  }
+
+  /// Resolve the user's real OS Downloads folder (respecting Windows `FOLDERID_Downloads` on D:/E: drives)
+  static Future<Directory> resolveDownloadsDirectory() async {
+    final sep = Platform.pathSeparator;
+    final candidates = <String>[
+      if (Platform.isWindows)
+        Win32NativeBridge.getWindowsKnownDownloadsPath() ?? '',
+      if ((Platform.environment['USERPROFILE'] ?? '').isNotEmpty)
+        '${Platform.environment['USERPROFILE']}${sep}Downloads',
+      if ((Platform.environment['HOME'] ?? '').isNotEmpty)
+        '${Platform.environment['HOME']}${sep}Downloads',
+      if (Platform.isAndroid) '/storage/emulated/0/Download',
+      if (Platform.isAndroid) '/sdcard/Download',
+      if ((Platform.environment['USERPROFILE'] ?? '').isNotEmpty)
+        '${Platform.environment['USERPROFILE']}${sep}Desktop',
+      if ((Platform.environment['HOME'] ?? '').isNotEmpty)
+        '${Platform.environment['HOME']}${sep}Desktop',
+    ];
+    for (final raw in candidates) {
+      final path = raw.trim();
+      if (path.isEmpty) continue;
+      final dir = Directory(path);
+      if (await dir.exists()) {
+        return dir;
+      }
+    }
+    return Directory.systemTemp;
+  }
+
+  /// Save image bytes directly to the user's OS Downloads directory with browser-style collision numbering
+  static Future<String> saveImageToDisk({
+    required Uint8List bytes,
+    required String label,
+    String ext = 'png',
+  }) async {
+    final dir = await resolveDownloadsDirectory();
+    final sep = Platform.pathSeparator;
+    final stem = _sanitizeName(label);
+    var candidate = File('${dir.path}$sep$stem.$ext');
+    var suffix = 1;
+    while (await candidate.exists() && suffix < 999) {
+      candidate = File('${dir.path}$sep$stem ($suffix).$ext');
+      suffix++;
+    }
+    await candidate.writeAsBytes(bytes, flush: true);
+    return candidate.path;
+  }
+
+  /// Open native Save-As file dialog on Windows (or fall back to Downloads directory on other platforms)
+  static Future<String?> saveImageWithNativeDialog({
+    required Uint8List bytes,
+    required String label,
+    String ext = 'png',
+  }) async {
+    final stem = _sanitizeName(label);
+    if (Platform.isWindows) {
+      final dlDir = await resolveDownloadsDirectory();
+      final chosen = Win32NativeBridge.showWindowsSaveFileDialog(
+        suggestedFileName: '$stem.$ext',
+        initialDirectory: dlDir.path,
+      );
+      if (chosen == null || chosen.isEmpty) {
+        return null; // User cancelled dialog
+      }
+      final outPath =
+          chosen.toLowerCase().endsWith('.$ext') ? chosen : '$chosen.$ext';
+      final f = File(outPath);
+      await f.parent.create(recursive: true);
+      await f.writeAsBytes(bytes, flush: true);
+      return f.path;
+    }
+    return saveImageToDisk(bytes: bytes, label: label, ext: ext);
+  }
+
+  static void showSavedSnackBar(BuildContext context, String savedPath) {
+    if (!context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFF131416),
+        content: Text(
+          '图片已保存至：$savedPath',
+          style: const TextStyle(fontSize: 12, color: Colors.white),
+        ),
+        action: SnackBarAction(
+          label: '在文件夹中显示',
+          textColor: const Color(0xFF5CE1E6),
+          onPressed: () {
+            Win32NativeBridge.revealInFileManager(savedPath);
+          },
+        ),
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
 
   static Future<void> showImageContextMenu({
@@ -170,7 +352,7 @@ class HfsImageClipboardAndExporter {
     String? highlightedQuestionName,
     VoidCallback? onOpenLightbox,
   }) async {
-    final hasOverlay = overlay != null && decodedImage != null;
+    final hasOverlay = overlay != null;
     final selected = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(
@@ -218,7 +400,7 @@ class HfsImageClipboardAndExporter {
           ),
         const PopupMenuDivider(height: 6),
         PopupMenuItem<String>(
-          value: 'export_current',
+          value: 'download_current',
           height: 36,
           child: Row(
             children: [
@@ -226,7 +408,9 @@ class HfsImageClipboardAndExporter {
                   size: 16, color: Color(0xFF1B6C80)),
               const SizedBox(width: 8),
               Text(
-                hasOverlay && showOverlay ? '导出图片文件（含批改层 .png）' : '导出图片文件 (.png)',
+                hasOverlay && showOverlay
+                    ? '保存至下载目录（含批改层 .png）'
+                    : '保存图片至下载目录 (.png)',
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
@@ -238,7 +422,7 @@ class HfsImageClipboardAndExporter {
         ),
         if (hasOverlay && showOverlay)
           const PopupMenuItem<String>(
-            value: 'export_raw',
+            value: 'download_raw',
             height: 36,
             child: Row(
               children: [
@@ -246,7 +430,23 @@ class HfsImageClipboardAndExporter {
                     size: 16, color: Color(0xFF5D5F60)),
                 SizedBox(width: 8),
                 Text(
-                  '导出纯原图文件 (.png)',
+                  '保存纯原图至下载目录 (.png)',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF131416)),
+                ),
+              ],
+            ),
+          ),
+        if (Platform.isWindows)
+          const PopupMenuItem<String>(
+            value: 'save_as_dialog',
+            height: 36,
+            child: Row(
+              children: [
+                Icon(Icons.folder_open_outlined,
+                    size: 16, color: Color(0xFF131416)),
+                SizedBox(width: 8),
+                Text(
+                  '图片另存为… (选择文件夹)',
                   style: TextStyle(fontSize: 12, color: Color(0xFF131416)),
                 ),
               ],
@@ -262,7 +462,7 @@ class HfsImageClipboardAndExporter {
                 Icon(Icons.zoom_out_map, size: 16, color: Color(0xFF131416)),
                 SizedBox(width: 8),
                 Text(
-                  '全屏无损放大阅卷',
+                  '全屏无损放大阅卷 (支持 ←/→ 切图)',
                   style: TextStyle(fontSize: 12, color: Color(0xFF131416)),
                 ),
               ],
@@ -279,9 +479,34 @@ class HfsImageClipboardAndExporter {
     }
 
     try {
-      final includeOv =
-          (selected == 'copy_current' || selected == 'export_current') &&
-              showOverlay;
+      final includeOv = (selected == 'copy_current' ||
+              selected == 'download_current' ||
+              selected == 'save_as_dialog') &&
+          showOverlay;
+
+      if (selected.startsWith('copy_')) {
+        final ok = await copyImageFastToClipboard(
+          rawBytes: rawBytes,
+          decodedImage: decodedImage,
+          overlay: overlay,
+          includeOverlay: includeOv,
+          highlightedQuestionName: highlightedQuestionName,
+        );
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFF131416),
+            content: Text(
+              ok ? '图片已复制到系统剪贴板' : '复制图片到剪贴板失败',
+              style: const TextStyle(fontSize: 12, color: Colors.white),
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+
       final pngBytes = await encodeCompositePng(
         rawBytes: rawBytes,
         decodedImage: decodedImage,
@@ -289,39 +514,24 @@ class HfsImageClipboardAndExporter {
         includeOverlay: includeOv,
         highlightedQuestionName: highlightedQuestionName,
       );
-      if (selected.startsWith('copy_')) {
-        final path = await copyImageToSystemClipboard(
+      if (selected == 'save_as_dialog') {
+        final path = await saveImageWithNativeDialog(
           bytes: pngBytes,
           label: label,
+          ext: 'png',
         );
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: const Color(0xFF131416),
-            content: Text(
-              '图片已复制到系统剪贴板（同时已存至：$path）',
-              style: const TextStyle(fontSize: 12, color: Colors.white),
-            ),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      } else if (selected.startsWith('export_')) {
+        if (path != null && context.mounted) {
+          showSavedSnackBar(context, path);
+        }
+      } else {
         final path = await saveImageToDisk(
           bytes: pngBytes,
           label: label,
           ext: 'png',
         );
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: const Color(0xFF131416),
-            content: Text(
-              '图片已导出至：$path',
-              style: const TextStyle(fontSize: 12, color: Colors.white),
-            ),
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        if (context.mounted) {
+          showSavedSnackBar(context, path);
+        }
       }
     } catch (e) {
       if (!context.mounted) return;
@@ -341,6 +551,7 @@ class HfsImageClipboardAndExporter {
 class AnswerSheetCanvas extends StatefulWidget {
   final HfsUpstreamClient client;
   final String imageUrl;
+  final String caption;
   final PageOverlayData? overlay;
   final bool showOverlay;
   final double zoomScale;
@@ -352,6 +563,7 @@ class AnswerSheetCanvas extends StatefulWidget {
     super.key,
     required this.client,
     required this.imageUrl,
+    this.caption = '好分数答题卡',
     this.overlay,
     this.showOverlay = true,
     this.zoomScale = 1.0,
@@ -371,6 +583,10 @@ class _AnswerSheetCanvasState extends State<AnswerSheetCanvas> {
   bool _loading = true;
   int _loadEpoch = 0;
   double _basePinchZoom = 1.0;
+  double _baseScrollOffsetX = 0.0;
+  Offset _baseLocalFocal = Offset.zero;
+  bool _isTrackpadPinching = false;
+  final ScrollController _hScrollCtrl = ScrollController();
 
   @override
   void initState() {
@@ -380,6 +596,7 @@ class _AnswerSheetCanvasState extends State<AnswerSheetCanvas> {
 
   @override
   void dispose() {
+    _hScrollCtrl.dispose();
     _decodedImage?.dispose();
     _decodedImage = null;
     super.dispose();
@@ -422,6 +639,22 @@ class _AnswerSheetCanvasState extends State<AnswerSheetCanvas> {
         _loading = false;
       });
     }
+  }
+
+  void _applyFocalHorizontalScroll({
+    required double focalX,
+    required double oldScrollX,
+    required double ratio,
+    double extraPanX = 0.0,
+  }) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_hScrollCtrl.hasClients) return;
+      final maxX = _hScrollCtrl.position.maxScrollExtent;
+      if (maxX > 0) {
+        final newScrollX = (focalX * ratio) - (focalX - oldScrollX) - extraPanX;
+        _hScrollCtrl.jumpTo(newScrollX.clamp(0.0, maxX));
+      }
+    });
   }
 
   @override
@@ -524,6 +757,11 @@ class _AnswerSheetCanvasState extends State<AnswerSheetCanvas> {
               ? SystemMouseCursors.zoomIn
               : MouseCursor.defer,
           child: GestureDetector(
+            supportedDevices: const <PointerDeviceKind>{
+              PointerDeviceKind.touch,
+              PointerDeviceKind.mouse,
+              PointerDeviceKind.stylus,
+            },
             onTap: widget.onOpenLightbox,
             onSecondaryTapDown: (details) {
               if (_imageBytes == null) return;
@@ -531,7 +769,7 @@ class _AnswerSheetCanvasState extends State<AnswerSheetCanvas> {
                 context: context,
                 globalPosition: details.globalPosition,
                 rawBytes: _imageBytes!,
-                label: 'hfs_answer_sheet',
+                label: widget.caption,
                 decodedImage: _decodedImage,
                 overlay: widget.overlay,
                 showOverlay: widget.showOverlay,
@@ -545,7 +783,7 @@ class _AnswerSheetCanvasState extends State<AnswerSheetCanvas> {
                 context: context,
                 globalPosition: details.globalPosition,
                 rawBytes: _imageBytes!,
-                label: 'hfs_answer_sheet',
+                label: widget.caption,
                 decodedImage: _decodedImage,
                 overlay: widget.overlay,
                 showOverlay: widget.showOverlay,
@@ -553,21 +791,34 @@ class _AnswerSheetCanvasState extends State<AnswerSheetCanvas> {
                 onOpenLightbox: widget.onOpenLightbox,
               );
             },
-            onScaleStart: widget.onZoomChanged != null
-                ? (_) {
-                    _basePinchZoom = widget.zoomScale;
-                  }
-                : null,
-            onScaleUpdate: widget.onZoomChanged != null
-                ? (details) {
-                    if ((details.scale - 1.0).abs() > 0.01) {
-                      widget.onZoomChanged!(
-                        (_basePinchZoom * details.scale).clamp(0.6, 2.5),
-                      );
-                    }
-                  }
-                : null,
             child: Listener(
+              onPointerPanZoomStart: (event) {
+                _basePinchZoom = widget.zoomScale.clamp(0.6, 2.5);
+                _baseLocalFocal = event.localPosition;
+                _baseScrollOffsetX =
+                    _hScrollCtrl.hasClients ? _hScrollCtrl.offset : 0.0;
+                _isTrackpadPinching = false;
+              },
+              onPointerPanZoomUpdate: (event) {
+                if ((event.scale - 1.0).abs() > 0.022) {
+                  _isTrackpadPinching = true;
+                }
+                if (_isTrackpadPinching && widget.onZoomChanged != null) {
+                  final targetZoom =
+                      (_basePinchZoom * event.scale).clamp(0.6, 2.5);
+                  final ratio = targetZoom / _basePinchZoom;
+                  widget.onZoomChanged!(targetZoom);
+                  _applyFocalHorizontalScroll(
+                    focalX: _baseLocalFocal.dx,
+                    oldScrollX: _baseScrollOffsetX,
+                    ratio: ratio,
+                    extraPanX: event.localPan.dx,
+                  );
+                }
+              },
+              onPointerPanZoomEnd: (_) {
+                _isTrackpadPinching = false;
+              },
               onPointerSignal: (event) {
                 if (widget.onZoomChanged == null) return;
                 if (event is PointerScaleEvent) {
@@ -575,12 +826,52 @@ class _AnswerSheetCanvasState extends State<AnswerSheetCanvas> {
                     event,
                     (resolved) {
                       if (resolved is PointerScaleEvent) {
-                        widget.onZoomChanged!(
-                          (widget.zoomScale * resolved.scale).clamp(0.6, 2.5),
+                        final oldZ = widget.zoomScale.clamp(0.6, 2.5);
+                        final newZ = (oldZ * resolved.scale).clamp(0.6, 2.5);
+                        final ratio = newZ / oldZ;
+                        final oldX =
+                            _hScrollCtrl.hasClients ? _hScrollCtrl.offset : 0.0;
+                        widget.onZoomChanged!(newZ);
+                        _applyFocalHorizontalScroll(
+                          focalX: resolved.localPosition.dx,
+                          oldScrollX: oldX,
+                          ratio: ratio,
                         );
                       }
                     },
                   );
+                } else if (event is PointerScrollEvent) {
+                  final pressed =
+                      HardwareKeyboard.instance.logicalKeysPressed;
+                  final isCtrlOrMeta =
+                      pressed.contains(LogicalKeyboardKey.controlLeft) ||
+                      pressed.contains(LogicalKeyboardKey.controlRight) ||
+                      pressed.contains(LogicalKeyboardKey.metaLeft) ||
+                      pressed.contains(LogicalKeyboardKey.metaRight);
+                  if (isCtrlOrMeta && event.scrollDelta.dy != 0) {
+                    GestureBinding.instance.pointerSignalResolver.register(
+                      event,
+                      (resolved) {
+                        if (resolved is PointerScrollEvent) {
+                          final factor = math
+                              .exp(-resolved.scrollDelta.dy / 280.0)
+                              .clamp(0.75, 1.35);
+                          final oldZ = widget.zoomScale.clamp(0.6, 2.5);
+                          final newZ = (oldZ * factor).clamp(0.6, 2.5);
+                          final ratio = newZ / oldZ;
+                          final oldX = _hScrollCtrl.hasClients
+                              ? _hScrollCtrl.offset
+                              : 0.0;
+                          widget.onZoomChanged!(newZ);
+                          _applyFocalHorizontalScroll(
+                            focalX: resolved.localPosition.dx,
+                            oldScrollX: oldX,
+                            ratio: ratio,
+                          );
+                        }
+                      },
+                    );
+                  }
                 }
               },
               child: stage,
@@ -588,23 +879,24 @@ class _AnswerSheetCanvasState extends State<AnswerSheetCanvas> {
           ),
         );
 
-        if (zoom > 1.01) {
-          return IsolatedHorizontalScroll(
-            child: stage,
-          );
-        }
-        return stage;
+        return IsolatedHorizontalScroll(
+          controller: _hScrollCtrl,
+          convertVerticalWheelToHorizontal: false,
+          child: stage,
+        );
       },
     );
   }
 }
 
-/// Inline oss crop / stem image viewer with click-to-lightbox
+/// Inline oss crop / stem image viewer with click-to-lightbox & gallery navigation
 class OssCropImage extends StatefulWidget {
   final HfsUpstreamClient client;
   final String imageUrl;
   final double? maxHeight;
   final String caption;
+  final List<LightboxGalleryItem>? galleryItems;
+  final int galleryIndex;
 
   const OssCropImage({
     super.key,
@@ -612,6 +904,8 @@ class OssCropImage extends StatefulWidget {
     required this.imageUrl,
     this.maxHeight,
     this.caption = '原图放大查看',
+    this.galleryItems,
+    this.galleryIndex = 0,
   });
 
   @override
@@ -620,6 +914,7 @@ class OssCropImage extends StatefulWidget {
 
 class _OssCropImageState extends State<OssCropImage> {
   Uint8List? _bytes;
+  ui.Image? _decoded;
   String? _error;
   bool _loading = true;
 
@@ -627,6 +922,13 @@ class _OssCropImageState extends State<OssCropImage> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _decoded?.dispose();
+    _decoded = null;
+    super.dispose();
   }
 
   @override
@@ -644,11 +946,20 @@ class _OssCropImageState extends State<OssCropImage> {
     });
     try {
       final b = await widget.client.fetchOssImageBytes(widget.imageUrl);
-      if (!mounted) return;
+      final codec = await ui.instantiateImageCodec(b);
+      final frame = await codec.getNextFrame();
+      codec.dispose();
+      if (!mounted) {
+        frame.image.dispose();
+        return;
+      }
+      final prev = _decoded;
       setState(() {
         _bytes = b;
+        _decoded = frame.image;
         _loading = false;
       });
+      prev?.dispose();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -656,6 +967,17 @@ class _OssCropImageState extends State<OssCropImage> {
         _loading = false;
       });
     }
+  }
+
+  void _openLightbox() {
+    showOssImageLightbox(
+      context: context,
+      client: widget.client,
+      imageUrl: widget.imageUrl,
+      caption: widget.caption,
+      galleryItems: widget.galleryItems,
+      initialIndex: widget.galleryIndex,
+    );
   }
 
   @override
@@ -733,25 +1055,16 @@ class _OssCropImageState extends State<OssCropImage> {
     return MouseRegion(
       cursor: SystemMouseCursors.zoomIn,
       child: GestureDetector(
-        onTap: () => showOssImageLightbox(
-          context: context,
-          client: widget.client,
-          imageUrl: widget.imageUrl,
-          caption: widget.caption,
-        ),
+        onTap: _openLightbox,
         onSecondaryTapDown: (details) {
           if (_bytes == null) return;
           HfsImageClipboardAndExporter.showImageContextMenu(
             context: context,
             globalPosition: details.globalPosition,
             rawBytes: _bytes!,
+            decodedImage: _decoded,
             label: widget.caption,
-            onOpenLightbox: () => showOssImageLightbox(
-              context: context,
-              client: widget.client,
-              imageUrl: widget.imageUrl,
-              caption: widget.caption,
-            ),
+            onOpenLightbox: _openLightbox,
           );
         },
         onLongPressStart: (details) {
@@ -760,13 +1073,9 @@ class _OssCropImageState extends State<OssCropImage> {
             context: context,
             globalPosition: details.globalPosition,
             rawBytes: _bytes!,
+            decodedImage: _decoded,
             label: widget.caption,
-            onOpenLightbox: () => showOssImageLightbox(
-              context: context,
-              client: widget.client,
-              imageUrl: widget.imageUrl,
-              caption: widget.caption,
-            ),
+            onOpenLightbox: _openLightbox,
           );
         },
         child: Container(
@@ -783,7 +1092,10 @@ class _OssCropImageState extends State<OssCropImage> {
   }
 }
 
-/// Fullscreen interactive Lightbox dialog supporting pinch, drag, wheel zoom and overlay toggle
+/// Fullscreen interactive Lightbox dialog supporting:
+/// - Trackpad 2-finger pan (`PointerPanZoomUpdateEvent.localPanDelta`) & focal-anchored pinch zoom (`event.scale`) with zero drift
+/// - Keyboard `←` / `→` / `PageUp` / `PageDown` / `A` / `D` image switching across `galleryItems`
+/// - Instant `<10ms` Win32 `CF_DIB` clipboard copy (`Ctrl+C`) & Save to Downloads (`Ctrl+S`)
 Future<void> showOssImageLightbox({
   required BuildContext context,
   required HfsUpstreamClient client,
@@ -791,33 +1103,42 @@ Future<void> showOssImageLightbox({
   required String caption,
   PageOverlayData? overlay,
   bool initialShowOverlay = true,
+  String? highlightedQuestionName,
+  List<LightboxGalleryItem>? galleryItems,
+  int initialIndex = 0,
 }) {
+  final items = (galleryItems != null && galleryItems.isNotEmpty)
+      ? galleryItems
+      : <LightboxGalleryItem>[
+          LightboxGalleryItem(
+            imageUrl: imageUrl,
+            caption: caption,
+            overlay: overlay,
+            initialShowOverlay: initialShowOverlay,
+            highlightedQuestionName: highlightedQuestionName,
+          ),
+        ];
+  final safeIdx = initialIndex.clamp(0, items.length - 1);
   return showDialog<void>(
     context: context,
     barrierColor: const Color(0xF0131416),
     builder: (ctx) => _OssLightboxDialog(
       client: client,
-      imageUrl: imageUrl,
-      caption: caption,
-      overlay: overlay,
-      initialShowOverlay: initialShowOverlay,
+      items: items,
+      initialIndex: safeIdx,
     ),
   );
 }
 
 class _OssLightboxDialog extends StatefulWidget {
   final HfsUpstreamClient client;
-  final String imageUrl;
-  final String caption;
-  final PageOverlayData? overlay;
-  final bool initialShowOverlay;
+  final List<LightboxGalleryItem> items;
+  final int initialIndex;
 
   const _OssLightboxDialog({
     required this.client,
-    required this.imageUrl,
-    required this.caption,
-    this.overlay,
-    this.initialShowOverlay = true,
+    required this.items,
+    required this.initialIndex,
   });
 
   @override
@@ -825,75 +1146,202 @@ class _OssLightboxDialog extends StatefulWidget {
 }
 
 class _OssLightboxDialogState extends State<_OssLightboxDialog> {
-  final TransformationController _ctrl = TransformationController();
-  Size _viewportSize = const Size(960, 720);
+  late int _currentIndex;
+  Size _viewportSize = const Size(1280, 800);
+  Size _fittedImageSize = const Size(800, 600);
   ui.Image? _decoded;
   Uint8List? _bytes;
   String? _error;
   bool _loading = true;
+  int _loadToken = 0;
   late bool _showOverlay;
+
+  // Deterministic center-relative transform state (replaces buggy InteractiveViewer)
   double _scale = 1.0;
+  Offset _offset = Offset.zero;
+  double _panZoomBaseScale = 1.0;
+  double _touchPinchBaseScale = 1.0;
+  Offset _touchLastFocal = Offset.zero;
+
+  LightboxGalleryItem get _currentItem => widget.items[_currentIndex];
 
   @override
   void initState() {
     super.initState();
-    _showOverlay = widget.initialShowOverlay;
-    _ctrl.addListener(_onMatrix);
-    _load();
+    _currentIndex = widget.initialIndex.clamp(0, widget.items.length - 1);
+    _showOverlay = _currentItem.initialShowOverlay;
+    HardwareKeyboard.instance.addHandler(_handleHardwareKey);
+    _loadCurrentImage();
   }
 
   @override
   void dispose() {
-    _ctrl.removeListener(_onMatrix);
-    _ctrl.dispose();
+    HardwareKeyboard.instance.removeHandler(_handleHardwareKey);
     _decoded?.dispose();
     _decoded = null;
     super.dispose();
   }
 
-  void _onMatrix() {
-    final s = _ctrl.value.getMaxScaleOnAxis();
-    if ((s - _scale).abs() > 0.03 && mounted) {
-      setState(() => _scale = s);
+  bool _handleHardwareKey(KeyEvent event) {
+    if (!mounted) return false;
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
+
+    final key = event.logicalKey;
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    final isCtrlOrMeta = pressed.contains(LogicalKeyboardKey.controlLeft) ||
+        pressed.contains(LogicalKeyboardKey.controlRight) ||
+        pressed.contains(LogicalKeyboardKey.metaLeft) ||
+        pressed.contains(LogicalKeyboardKey.metaRight);
+
+    if (isCtrlOrMeta) {
+      if (key == LogicalKeyboardKey.keyC && _bytes != null) {
+        _copyCurrentToClipboard();
+        return true;
+      }
+      if (key == LogicalKeyboardKey.keyS && _bytes != null) {
+        _saveCurrentToDownloads();
+        return true;
+      }
+      return false;
     }
+
+    // Left / PageUp / A -> Previous image
+    if (key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.pageUp ||
+        key == LogicalKeyboardKey.keyA ||
+        key == LogicalKeyboardKey.bracketLeft) {
+      if (widget.items.length > 1) {
+        _switchGalleryIndex(_currentIndex - 1);
+        return true;
+      }
+    }
+
+    // Right / PageDown / D / Space -> Next image
+    if (key == LogicalKeyboardKey.arrowRight ||
+        key == LogicalKeyboardKey.pageDown ||
+        key == LogicalKeyboardKey.keyD ||
+        key == LogicalKeyboardKey.bracketRight ||
+        key == LogicalKeyboardKey.space) {
+      if (widget.items.length > 1) {
+        _switchGalleryIndex(_currentIndex + 1);
+        return true;
+      }
+    }
+
+    // Up / Down: pan if zoomed in, otherwise switch image!
+    if (key == LogicalKeyboardKey.arrowUp) {
+      if (_scale > 1.05) {
+        setState(() {
+          _offset = _clampOffset(_offset + const Offset(0, 72), _scale);
+        });
+        return true;
+      } else if (widget.items.length > 1) {
+        _switchGalleryIndex(_currentIndex - 1);
+        return true;
+      }
+    }
+    if (key == LogicalKeyboardKey.arrowDown) {
+      if (_scale > 1.05) {
+        setState(() {
+          _offset = _clampOffset(_offset + const Offset(0, -72), _scale);
+        });
+        return true;
+      } else if (widget.items.length > 1) {
+        _switchGalleryIndex(_currentIndex + 1);
+        return true;
+      }
+    }
+
+    // + / = -> Zoom in
+    if (key == LogicalKeyboardKey.equal ||
+        key == LogicalKeyboardKey.add ||
+        key == LogicalKeyboardKey.numpadAdd) {
+      _setScale(_scale * 1.25);
+      return true;
+    }
+    // - -> Zoom out
+    if (key == LogicalKeyboardKey.minus ||
+        key == LogicalKeyboardKey.numpadSubtract) {
+      _setScale(_scale / 1.25);
+      return true;
+    }
+    // 0 -> Reset zoom
+    if (key == LogicalKeyboardKey.digit0 ||
+        key == LogicalKeyboardKey.numpad0) {
+      _resetTransform();
+      return true;
+    }
+
+    return false;
   }
 
-  /// Zoom smoothly around [focalPoint] (or viewport center) so the image never drifts to the bottom-right corner!
+  void _switchGalleryIndex(int newIdx) {
+    if (widget.items.length <= 1) return;
+    final wrapped = (newIdx % widget.items.length + widget.items.length) %
+        widget.items.length;
+    if (wrapped == _currentIndex) return;
+    setState(() {
+      _currentIndex = wrapped;
+      _scale = 1.0;
+      _offset = Offset.zero;
+    });
+    _loadCurrentImage();
+  }
+
+  void _resetTransform() {
+    setState(() {
+      _scale = 1.0;
+      _offset = Offset.zero;
+    });
+  }
+
+  Offset _clampOffset(Offset candidate, double scale) {
+    final scaledW = _fittedImageSize.width * scale;
+    final scaledH = _fittedImageSize.height * scale;
+    final maxPanX =
+        math.max(_viewportSize.width * 0.35, (scaledW - _viewportSize.width) / 2.0 + 140.0);
+    final maxPanY =
+        math.max(_viewportSize.height * 0.35, (scaledH - _viewportSize.height) / 2.0 + 140.0);
+    return Offset(
+      candidate.dx.clamp(-maxPanX, maxPanX),
+      candidate.dy.clamp(-maxPanY, maxPanY),
+    );
+  }
+
+  /// Zoom smoothly around [focalPoint] (in viewport coordinates) with zero drift!
   void _setScale(double target, {Offset? focalPoint}) {
-    final c = target.clamp(0.5, 5.0);
-    if ((c - 1.0).abs() < 0.04) {
-      _ctrl.value = Matrix4.identity();
+    final newScale = target.clamp(0.4, 6.0);
+    if ((newScale - 1.0).abs() < 0.02 && focalPoint == null) {
+      _resetTransform();
       return;
     }
-    final oldScale = _ctrl.value.getMaxScaleOnAxis();
-    if (oldScale <= 0) {
-      _ctrl.value = Matrix4.diagonal3Values(c, c, 1.0);
-      return;
-    }
-    final anchor = focalPoint ??
-        Offset(_viewportSize.width / 2.0, _viewportSize.height / 2.0);
-    final oldTx = _ctrl.value.storage[12];
-    final oldTy = _ctrl.value.storage[13];
-    // Preserve scene point under anchor: scenePt = (anchor - oldT) / oldScale, newT = anchor - scenePt * c
-    final ratio = c / oldScale;
-    final newTx = anchor.dx - (anchor.dx - oldTx) * ratio;
-    final newTy = anchor.dy - (anchor.dy - oldTy) * ratio;
-    final m = Matrix4.diagonal3Values(c, c, 1.0);
-    m.setTranslationRaw(newTx, newTy, 0.0);
-    _ctrl.value = m;
+    final oldScale = _scale;
+    final center = Offset(_viewportSize.width / 2.0, _viewportSize.height / 2.0);
+    final anchor = focalPoint ?? center;
+    final ratio = newScale / math.max(0.1, oldScale);
+    // Exact center-relative focal-point invariance:
+    // newOffset = (anchor - center) - (anchor - center - oldOffset) * (newScale / oldScale)
+    final relAnchor = anchor - center;
+    final rawNewOffset = relAnchor - (relAnchor - _offset) * ratio;
+    setState(() {
+      _scale = newScale;
+      _offset = _clampOffset(rawNewOffset, newScale);
+    });
   }
 
-  Future<void> _load() async {
+  Future<void> _loadCurrentImage() async {
+    final token = ++_loadToken;
+    final item = _currentItem;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final b = await widget.client.fetchOssImageBytes(widget.imageUrl);
+      final b = await widget.client.fetchOssImageBytes(item.imageUrl);
       final codec = await ui.instantiateImageCodec(b);
       final frame = await codec.getNextFrame();
       codec.dispose();
-      if (!mounted) {
+      if (!mounted || token != _loadToken) {
         frame.image.dispose();
         return;
       }
@@ -904,8 +1352,18 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
         _loading = false;
       });
       prev?.dispose();
+
+      // Preload adjacent gallery images in background for instant keyboard switching
+      if (widget.items.length > 1) {
+        final nextIdx = (_currentIndex + 1) % widget.items.length;
+        unawaited(
+          widget.client
+              .fetchOssImageBytes(widget.items[nextIdx].imageUrl)
+              .catchError((_) => Uint8List(0)),
+        );
+      }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || token != _loadToken) return;
       setState(() {
         _error = e.toString().replaceFirst('Exception: ', '');
         _loading = false;
@@ -913,12 +1371,64 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
     }
   }
 
+  Future<void> _copyCurrentToClipboard() async {
+    if (_bytes == null) return;
+    final item = _currentItem;
+    final ok = await HfsImageClipboardAndExporter.copyImageFastToClipboard(
+      rawBytes: _bytes!,
+      decodedImage: _decoded,
+      overlay: item.overlay,
+      includeOverlay: _showOverlay,
+      highlightedQuestionName: item.highlightedQuestionName,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFF131416),
+        content: Text(
+          ok ? '图片已复制到系统剪贴板' : '复制图片失败',
+          style: const TextStyle(fontSize: 12, color: Colors.white),
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _saveCurrentToDownloads({bool useSaveAsDialog = false}) async {
+    if (_bytes == null) return;
+    final item = _currentItem;
+    final png = await HfsImageClipboardAndExporter.encodeCompositePng(
+      rawBytes: _bytes!,
+      decodedImage: _decoded,
+      overlay: item.overlay,
+      includeOverlay: _showOverlay,
+      highlightedQuestionName: item.highlightedQuestionName,
+    );
+    final saved = useSaveAsDialog
+        ? await HfsImageClipboardAndExporter.saveImageWithNativeDialog(
+            bytes: png,
+            label: item.caption,
+          )
+        : await HfsImageClipboardAndExporter.saveImageToDisk(
+            bytes: png,
+            label: item.caption,
+          );
+    if (saved != null && mounted) {
+      HfsImageClipboardAndExporter.showSavedSnackBar(context, saved);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final item = _currentItem;
+    final totalCount = widget.items.length;
+
     return Dialog.fullscreen(
       backgroundColor: const Color(0xF2131416),
       child: Column(
         children: [
+          // Top Toolbar
           Container(
             height: 52,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -928,9 +1438,42 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
             ),
             child: Row(
               children: [
+                if (totalCount > 1) ...[
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1B6C80),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${_currentIndex + 1} / $totalCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        fontFeatures: [ui.FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: '上一张 (键盘 ← / PageUp)',
+                    onPressed: () => _switchGalleryIndex(_currentIndex - 1),
+                    icon: const Icon(Icons.chevron_left,
+                        color: Colors.white, size: 22),
+                  ),
+                  IconButton(
+                    tooltip: '下一张 (键盘 → / PageDown)',
+                    onPressed: () => _switchGalleryIndex(_currentIndex + 1),
+                    icon: const Icon(Icons.chevron_right,
+                        color: Colors.white, size: 22),
+                  ),
+                  const SizedBox(width: 6),
+                ],
                 Expanded(
                   child: Text(
-                    widget.caption,
+                    item.caption,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -940,7 +1483,7 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
                     ),
                   ),
                 ),
-                if (widget.overlay != null) ...[
+                if (item.overlay != null) ...[
                   TextButton.icon(
                     onPressed: () =>
                         setState(() => _showOverlay = !_showOverlay),
@@ -956,75 +1499,50 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
                       style: const TextStyle(color: Colors.white, fontSize: 12),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                 ],
                 if (_bytes != null) ...[
                   TextButton.icon(
-                    onPressed: () async {
-                      final png = await HfsImageClipboardAndExporter
-                          .encodeCompositePng(
-                        rawBytes: _bytes!,
-                        decodedImage: _decoded,
-                        overlay: widget.overlay,
-                        includeOverlay: _showOverlay,
-                      );
-                      final saved = await HfsImageClipboardAndExporter
-                          .copyImageToSystemClipboard(
-                        bytes: png,
-                        label: widget.caption,
-                      );
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('已复制图片到剪贴板（同时存至：$saved）'),
-                        ),
-                      );
-                    },
+                    onPressed: _copyCurrentToClipboard,
                     icon: const Icon(Icons.copy, size: 15, color: Colors.white),
                     label: const Text(
-                      '复制图片',
+                      '复制图片 (Ctrl+C)',
                       style: TextStyle(color: Colors.white, fontSize: 12),
                     ),
                   ),
                   TextButton.icon(
-                    onPressed: () async {
-                      final png = await HfsImageClipboardAndExporter
-                          .encodeCompositePng(
-                        rawBytes: _bytes!,
-                        decodedImage: _decoded,
-                        overlay: widget.overlay,
-                        includeOverlay: _showOverlay,
-                      );
-                      final saved =
-                          await HfsImageClipboardAndExporter.saveImageToDisk(
-                        bytes: png,
-                        label: widget.caption,
-                      );
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('图片已导出至：$saved'),
-                        ),
-                      );
-                    },
+                    onPressed: () => _saveCurrentToDownloads(useSaveAsDialog: false),
                     icon: const Icon(Icons.download_outlined,
                         size: 16, color: Colors.white),
                     label: const Text(
-                      '导出图片',
+                      '保存至下载 (Ctrl+S)',
                       style: TextStyle(color: Colors.white, fontSize: 12),
                     ),
                   ),
+                  if (Platform.isWindows)
+                    TextButton.icon(
+                      onPressed: () =>
+                          _saveCurrentToDownloads(useSaveAsDialog: true),
+                      icon: const Icon(Icons.folder_open_outlined,
+                          size: 15, color: Colors.white70),
+                      label: const Text(
+                        '另存为…',
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ),
                   const SizedBox(width: 6),
                 ],
                 IconButton(
-                  tooltip: '缩小',
-                  onPressed: () => _setScale(_scale - 0.35),
+                  tooltip: '缩小 (-)',
+                  onPressed: () => _setScale(_scale / 1.25),
                   icon: const Icon(Icons.remove, color: Colors.white, size: 18),
                 ),
                 InkWell(
-                  onTap: () => _setScale(1.0),
+                  onTap: _resetTransform,
+                  borderRadius: BorderRadius.circular(4),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                     child: Text(
                       '${(_scale * 100).round()}%',
                       style: const TextStyle(
@@ -1037,8 +1555,8 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
                   ),
                 ),
                 IconButton(
-                  tooltip: '放大',
-                  onPressed: () => _setScale(_scale + 0.35),
+                  tooltip: '放大 (+)',
+                  onPressed: () => _setScale(_scale * 1.25),
                   icon: const Icon(Icons.add, color: Colors.white, size: 18),
                 ),
                 const SizedBox(width: 8),
@@ -1050,6 +1568,8 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
               ],
             ),
           ),
+
+          // Main Interactive Stage
           Expanded(
             child: _loading
                 ? const Center(
@@ -1066,49 +1586,120 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
                         builder: (ctx, box) {
                           _viewportSize = Size(box.maxWidth, box.maxHeight);
                           final img = _decoded!;
-                          final aspect = img.width / math.max(1, img.height);
-                          final fitW = math.min(box.maxWidth - 32, 1100.0);
-                          final fitH = fitW / aspect;
-                          return Listener(
-                            onPointerSignal: (event) {
-                              if (event is PointerScaleEvent) {
-                                GestureBinding.instance.pointerSignalResolver
-                                    .register(event, (resolved) {
-                                  if (resolved is PointerScaleEvent) {
-                                    _setScale(
-                                      _scale * resolved.scale,
-                                      focalPoint: resolved.localPosition,
+                          final aspect =
+                              img.width / math.max(1.0, img.height.toDouble());
+                          final availW = math.max(120.0, box.maxWidth - 48.0);
+                          final availH = math.max(120.0, box.maxHeight - 36.0);
+                          double fitW = availW;
+                          double fitH = fitW / aspect;
+                          if (fitH > availH) {
+                            fitH = availH;
+                            fitW = fitH * aspect;
+                          }
+                          _fittedImageSize = Size(fitW, fitH);
+
+                          return Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Listener(
+                                behavior: HitTestBehavior.opaque,
+                                onPointerPanZoomStart: (event) {
+                                  _panZoomBaseScale = _scale;
+                                },
+                                onPointerPanZoomUpdate: (event) {
+                                  // 1. Apply 2-finger trackpad pan delta immediately
+                                  if (event.localPanDelta != Offset.zero) {
+                                    _offset = _clampOffset(
+                                      _offset + event.localPanDelta,
+                                      _scale,
                                     );
                                   }
-                                });
-                              } else if (event is PointerScrollEvent) {
-                                GestureBinding.instance.pointerSignalResolver
-                                    .register(event, (resolved) {
-                                  if (resolved is PointerScrollEvent) {
-                                    final dy = resolved.scrollDelta.dy;
-                                    if (dy != 0) {
-                                      final factor =
-                                          math.exp(-dy / 280.0).clamp(0.75, 1.35);
+                                  // 2. Apply focal-anchored pinch zoom around stationary cursor
+                                  if ((event.scale - 1.0).abs() > 0.003) {
+                                    _setScale(
+                                      _panZoomBaseScale * event.scale,
+                                      focalPoint: event.localPosition,
+                                    );
+                                  } else if (event.localPanDelta !=
+                                      Offset.zero) {
+                                    setState(() {});
+                                  }
+                                },
+                                onPointerSignal: (event) {
+                                  if (event is PointerScaleEvent) {
+                                    GestureBinding
+                                        .instance.pointerSignalResolver
+                                        .register(event, (resolved) {
+                                      if (resolved is PointerScaleEvent) {
+                                        _setScale(
+                                          _scale * resolved.scale,
+                                          focalPoint: resolved.localPosition,
+                                        );
+                                      }
+                                    });
+                                  } else if (event is PointerScrollEvent) {
+                                    GestureBinding
+                                        .instance.pointerSignalResolver
+                                        .register(event, (resolved) {
+                                      if (resolved is PointerScrollEvent) {
+                                        final pressed = HardwareKeyboard
+                                            .instance.logicalKeysPressed;
+                                        final isCtrlOrMeta = pressed.contains(
+                                              LogicalKeyboardKey.controlLeft,
+                                            ) ||
+                                            pressed.contains(
+                                              LogicalKeyboardKey.controlRight,
+                                            ) ||
+                                            pressed.contains(
+                                              LogicalKeyboardKey.metaLeft,
+                                            ) ||
+                                            pressed.contains(
+                                              LogicalKeyboardKey.metaRight,
+                                            );
+                                        if (resolved.kind ==
+                                                PointerDeviceKind.trackpad &&
+                                            !isCtrlOrMeta) {
+                                          // Legacy trackpad scroll -> 2D pan
+                                          setState(() {
+                                            _offset = _clampOffset(
+                                              _offset - resolved.scrollDelta,
+                                              _scale,
+                                            );
+                                          });
+                                        } else if (resolved.scrollDelta.dy !=
+                                            0) {
+                                          final factor = math
+                                              .exp(
+                                                -resolved.scrollDelta.dy /
+                                                    260.0,
+                                              )
+                                              .clamp(0.75, 1.35);
+                                          _setScale(
+                                            _scale * factor,
+                                            focalPoint: resolved.localPosition,
+                                          );
+                                        }
+                                      }
+                                    });
+                                  }
+                                },
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  supportedDevices: const <PointerDeviceKind>{
+                                    PointerDeviceKind.touch,
+                                    PointerDeviceKind.mouse,
+                                    PointerDeviceKind.stylus,
+                                  },
+                                  onDoubleTapDown: (details) {
+                                    if (_scale > 1.25) {
+                                      _resetTransform();
+                                    } else {
                                       _setScale(
-                                        _scale * factor,
-                                        focalPoint: resolved.localPosition,
+                                        2.2,
+                                        focalPoint: details.localPosition,
                                       );
                                     }
-                                  }
-                                });
-                              }
-                            },
-                            child: InteractiveViewer(
-                              transformationController: _ctrl,
-                              trackpadScrollCausesScale: false,
-                              minScale: 0.5,
-                              maxScale: 5.0,
-                              boundaryMargin: const EdgeInsets.all(240),
-                              child: Center(
-                              child: SizedBox(
-                                width: fitW,
-                                height: fitH,
-                                child: GestureDetector(
+                                  },
                                   onSecondaryTapDown: (details) {
                                     if (_bytes == null) return;
                                     HfsImageClipboardAndExporter
@@ -1116,39 +1707,134 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
                                       context: context,
                                       globalPosition: details.globalPosition,
                                       rawBytes: _bytes!,
-                                      label: widget.caption,
+                                      label: item.caption,
                                       decodedImage: _decoded,
-                                      overlay: widget.overlay,
+                                      overlay: item.overlay,
                                       showOverlay: _showOverlay,
+                                      highlightedQuestionName:
+                                          item.highlightedQuestionName,
                                     );
                                   },
-                                  child: Container(
-                                    color: Colors.white,
-                                    child: Stack(
-                                      fit: StackFit.expand,
-                                      children: [
-                                        Image.memory(
-                                          _bytes!,
-                                          fit: BoxFit.contain,
-                                        ),
-                                        if (_showOverlay &&
-                                            widget.overlay != null)
-                                          CustomPaint(
-                                            painter: _GradingOverlayPainter(
-                                              imageSize: Size(
-                                                img.width.toDouble(),
-                                                img.height.toDouble(),
-                                              ),
-                                              overlay: widget.overlay!,
+                                  onScaleStart: (details) {
+                                    _touchPinchBaseScale = _scale;
+                                    _touchLastFocal = details.localFocalPoint;
+                                  },
+                                  onScaleUpdate: (details) {
+                                    final delta =
+                                        details.localFocalPoint - _touchLastFocal;
+                                    _touchLastFocal = details.localFocalPoint;
+                                    if (delta != Offset.zero) {
+                                      _offset = _clampOffset(
+                                        _offset + delta,
+                                        _scale,
+                                      );
+                                    }
+                                    if ((details.scale - 1.0).abs() > 0.01) {
+                                      _setScale(
+                                        _touchPinchBaseScale * details.scale,
+                                        focalPoint: details.localFocalPoint,
+                                      );
+                                    } else if (delta != Offset.zero) {
+                                      setState(() {});
+                                    }
+                                  },
+                                  child: ClipRect(
+                                    child: Center(
+                                      child: Transform.translate(
+                                        offset: _offset,
+                                        child: Transform.scale(
+                                          scale: _scale,
+                                          alignment: Alignment.center,
+                                          child: Container(
+                                            width: fitW,
+                                            height: fitH,
+                                            color: Colors.white,
+                                            child: Stack(
+                                              fit: StackFit.expand,
+                                              children: [
+                                                Image.memory(
+                                                  _bytes!,
+                                                  fit: BoxFit.contain,
+                                                  gaplessPlayback: true,
+                                                ),
+                                                if (_showOverlay &&
+                                                    item.overlay != null)
+                                                  CustomPaint(
+                                                    painter:
+                                                        _GradingOverlayPainter(
+                                                      imageSize: Size(
+                                                        img.width.toDouble(),
+                                                        img.height.toDouble(),
+                                                      ),
+                                                      overlay: item.overlay!,
+                                                      highlightedQuestionName:
+                                                          item.highlightedQuestionName,
+                                                    ),
+                                                  ),
+                                              ],
                                             ),
                                           ),
-                                      ],
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                              ),
-                            ),
+
+                              // Floating Left / Right Gallery Navigation Arrows
+                              if (totalCount > 1) ...[
+                                Positioned(
+                                  left: 16,
+                                  top: 0,
+                                  bottom: 0,
+                                  child: Center(
+                                    child: Material(
+                                      color: const Color(0xB8131416),
+                                      shape: const CircleBorder(
+                                        side: BorderSide(
+                                          color: Color(0xFF3E4044),
+                                        ),
+                                      ),
+                                      child: IconButton(
+                                        tooltip: '上一张 (←)',
+                                        onPressed: () => _switchGalleryIndex(
+                                            _currentIndex - 1),
+                                        icon: const Icon(
+                                          Icons.chevron_left,
+                                          color: Colors.white,
+                                          size: 26,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  right: 16,
+                                  top: 0,
+                                  bottom: 0,
+                                  child: Center(
+                                    child: Material(
+                                      color: const Color(0xB8131416),
+                                      shape: const CircleBorder(
+                                        side: BorderSide(
+                                          color: Color(0xFF3E4044),
+                                        ),
+                                      ),
+                                      child: IconButton(
+                                        tooltip: '下一张 (→)',
+                                        onPressed: () => _switchGalleryIndex(
+                                            _currentIndex + 1),
+                                        icon: const Icon(
+                                          Icons.chevron_right,
+                                          color: Colors.white,
+                                          size: 26,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           );
                         },
                       ),
@@ -1454,7 +2140,8 @@ class _SvgCaptchaPainter extends CustomPainter {
 
   _SvgCaptchaPainter(this.svgXml);
 
-  static final RegExp _pathTagRe = RegExp(r'<path\b([^>]*)/?>', caseSensitive: false);
+  static final RegExp _pathTagRe =
+      RegExp(r'<path\b([^>]*)/?>', caseSensitive: false);
   static final RegExp _attrRe =
       RegExp(r'''([a-zA-Z_-]+)\s*=\s*["']([^"']*)["']''');
   static final RegExp _tokenRe =
@@ -1637,16 +2324,21 @@ class _SvgCaptchaPainter extends CustomPainter {
       oldDelegate.svgXml != svgXml;
 }
 
-/// Pure Flutter horizontal scroll wrapper that prevents mouse-wheel events from
-/// bubbling up to the vertical parent Scrollable when hovering a horizontal strip.
+/// Conflict-free horizontal scroll wrapper:
+/// - Does NOT register `PointerDeviceKind.trackpad` in `HorizontalDragGestureRecognizer`, so it NEVER steals
+///   vertical trackpad two-finger scroll gestures from the parent `ListView`!
+/// - Instead, handles horizontal trackpad panning (`event.localPanDelta.dx`) via `Listener.onPointerPanZoomUpdate`,
+///   enabling smooth simultaneous 2D diagonal trackpad scrolling!
 class IsolatedHorizontalScroll extends StatefulWidget {
   final Widget child;
   final ScrollController? controller;
+  final bool convertVerticalWheelToHorizontal;
 
   const IsolatedHorizontalScroll({
     super.key,
     required this.child,
     this.controller,
+    this.convertVerticalWheelToHorizontal = false,
   });
 
   @override
@@ -1679,31 +2371,73 @@ class _IsolatedHorizontalScrollState extends State<IsolatedHorizontalScroll> {
   Widget build(BuildContext context) {
     final ctrl = _effectiveCtrl;
     return Listener(
-      onPointerSignal: (event) {
-        if (event is PointerScrollEvent) {
-          GestureBinding.instance.pointerSignalResolver.register(
-            event,
-            (PointerSignalEvent resolved) {
-              if (resolved is PointerScrollEvent && ctrl.hasClients) {
-                final delta = resolved.scrollDelta.dy != 0
-                    ? resolved.scrollDelta.dy
-                    : resolved.scrollDelta.dx;
-                final maxExt = ctrl.position.maxScrollExtent;
-                if (maxExt > 0) {
-                  final target = (ctrl.offset + delta).clamp(0.0, maxExt);
-                  ctrl.jumpTo(target);
-                }
-              }
-            },
-          );
+      onPointerPanZoomUpdate: (event) {
+        if (!ctrl.hasClients) return;
+        // When user swipes horizontally on trackpad (and is not pinching), pan horizontally without blocking vertical scroll!
+        if ((event.scale - 1.0).abs() < 0.025 &&
+            event.localPanDelta.dx != 0.0) {
+          final maxExt = ctrl.position.maxScrollExtent;
+          if (maxExt > 0) {
+            final target =
+                (ctrl.offset - event.localPanDelta.dx).clamp(0.0, maxExt);
+            if (target != ctrl.offset) {
+              ctrl.jumpTo(target);
+            }
+          }
         }
       },
-      child: SingleChildScrollView(
-        controller: ctrl,
-        primary: false,
-        scrollDirection: Axis.horizontal,
-        physics: const ClampingScrollPhysics(),
-        child: widget.child,
+      onPointerSignal: (event) {
+        if (event is PointerScrollEvent && ctrl.hasClients) {
+          final maxExt = ctrl.position.maxScrollExtent;
+          if (maxExt <= 0) return;
+
+          final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+          final isShift = pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+              pressed.contains(LogicalKeyboardKey.shiftRight);
+
+          double hDelta = 0.0;
+          if (event.scrollDelta.dx != 0.0) {
+            hDelta = event.scrollDelta.dx;
+          } else if (event.scrollDelta.dy != 0.0 &&
+              (isShift ||
+                  (widget.convertVerticalWheelToHorizontal &&
+                      event.kind == PointerDeviceKind.mouse))) {
+            hDelta = event.scrollDelta.dy;
+          }
+
+          if (hDelta != 0.0) {
+            final nextOffset = (ctrl.offset + hDelta).clamp(0.0, maxExt);
+            if (nextOffset != ctrl.offset) {
+              GestureBinding.instance.pointerSignalResolver.register(
+                event,
+                (PointerSignalEvent resolved) {
+                  if (resolved is PointerScrollEvent && ctrl.hasClients) {
+                    final maxE = ctrl.position.maxScrollExtent;
+                    if (maxE > 0) {
+                      ctrl.jumpTo((ctrl.offset + hDelta).clamp(0.0, maxE));
+                    }
+                  }
+                },
+              );
+            }
+          }
+        }
+      },
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(
+          dragDevices: const <PointerDeviceKind>{
+            PointerDeviceKind.touch,
+            PointerDeviceKind.mouse,
+            PointerDeviceKind.stylus,
+          },
+        ),
+        child: SingleChildScrollView(
+          controller: ctrl,
+          primary: false,
+          scrollDirection: Axis.horizontal,
+          physics: const ClampingScrollPhysics(),
+          child: widget.child,
+        ),
       ),
     );
   }
