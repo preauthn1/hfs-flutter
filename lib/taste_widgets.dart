@@ -169,6 +169,7 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
   final TextEditingController _captchaCtrl = TextEditingController();
   final TextEditingController _inviteCtrl = TextEditingController();
   final TextEditingController _miniCodeCtrl = TextEditingController();
+  final TextEditingController _miniUnionIdCtrl = TextEditingController();
   final TextEditingController _miniInvitationCtrl = TextEditingController();
 
   String? _selectedMiniUserId;
@@ -206,6 +207,7 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
     _captchaCtrl.dispose();
     _inviteCtrl.dispose();
     _miniCodeCtrl.dispose();
+    _miniUnionIdCtrl.dispose();
     _miniInvitationCtrl.dispose();
     super.dispose();
   }
@@ -446,7 +448,7 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
   Future<void> _handleMiniRegister() async {
     final phone = _phoneCtrl.text.trim();
     final password = _passCtrl.text;
-    final unionId = _inviteCtrl.text.trim();
+    final unionId = _miniUnionIdCtrl.text.trim();
     final vcode = _smsCodeCtrl.text.trim();
     if (!_phoneRe.hasMatch(phone)) {
       setState(() => _errorText = '请输入有效的 11 位手机号码');
@@ -493,7 +495,7 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
         return;
       }
     }
-    final unionId = _inviteCtrl.text.trim();
+    final unionId = _miniUnionIdCtrl.text.trim();
     if (unionId.isEmpty) {
       setState(() => _errorText = '请输入微信 unionId（小程序 wx.login 结果提供）');
       return;
@@ -707,7 +709,7 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
             const SizedBox(height: 10),
             _buildLabeledInput(
               label: '微信 unionId',
-              controller: _inviteCtrl,
+              controller: _miniUnionIdCtrl,
               hint: '从你自己的小程序会话/服务端获取',
             ),
             const SizedBox(height: 10),
@@ -805,7 +807,7 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
           ] else if (_mode == 4) ...[
             _buildLabeledInput(
               label: '微信 unionId',
-              controller: _inviteCtrl,
+              controller: _miniUnionIdCtrl,
               hint: '从你自己的小程序会话/服务端获取',
             ),
             const SizedBox(height: 10),
@@ -898,32 +900,28 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
               obscure: true,
               onSubmitted: (_) => _handleSubmit(),
             ),
-          if (_mode == 4)
-            const SizedBox.shrink(),
-          if (_mode != 3 && _mode != 4)
-            const SizedBox(height: 10),
           if (_mode != 3 && _mode != 4)
             Row(
-            children: [
-              Expanded(
-                child: _buildLabeledInput(
-                  label: '账号备注名（选填，便于多号区分）',
-                  controller: _labelCtrl,
-                  hint: '如：家长主号 / 二号池',
-                ),
-              ),
-              if (_mode == 1) ...[
-                const SizedBox(width: 8),
+              children: [
                 Expanded(
                   child: _buildLabeledInput(
-                    label: '邀请码（选填）',
-                    controller: _inviteCtrl,
-                    hint: '可留空',
+                    label: '账号备注名（选填，便于多号区分）',
+                    controller: _labelCtrl,
+                    hint: '如：家长主号 / 二号池',
                   ),
                 ),
+                if (_mode == 1) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildLabeledInput(
+                      label: '邀请码（选填）',
+                      controller: _inviteCtrl,
+                      hint: '可留空',
+                    ),
+                  ),
+                ],
               ],
-            ],
-          ),
+            ),
           if (_infoText != null) ...[
             const SizedBox(height: 10),
             Container(

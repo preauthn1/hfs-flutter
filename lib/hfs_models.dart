@@ -379,9 +379,6 @@ class HfsAccount {
   /// session exchange. It is kept so an explicit local removal can also log
   /// out the mini-program session upstream.
   String wechatSessionCookie;
-  String wechatUnionId;
-  String wechatUserId;
-  String wechatKey;
   String state;
   int lastRefreshAt;
 
@@ -397,9 +394,6 @@ class HfsAccount {
     this.desiredStudentId = '',
     Map<String, StudentSnapshot>? studentSnapshots,
     this.wechatSessionCookie = '',
-    this.wechatUnionId = '',
-    this.wechatUserId = '',
-    this.wechatKey = '',
     this.state = 'connected',
     this.lastRefreshAt = 0,
   }) : studentSnapshots = studentSnapshots ?? <String, StudentSnapshot>{};
@@ -444,9 +438,6 @@ class HfsAccount {
         'activeStudentId': activeStudentId,
         'desiredStudentId': desiredStudentId,
         'wechatSessionCookie': wechatSessionCookie,
-        'wechatUnionId': wechatUnionId,
-        'wechatUserId': wechatUserId,
-        'wechatKey': wechatKey,
         'studentSnapshots':
             studentSnapshots.map((k, v) => MapEntry(k, v.toJson())),
         'state': state,
@@ -480,9 +471,6 @@ class HfsAccount {
           ? strOf(m['desiredStudentId'])
           : strOf(m['activeStudentId']),
       wechatSessionCookie: strOf(m['wechatSessionCookie']),
-      wechatUnionId: strOf(m['wechatUnionId']),
-      wechatUserId: strOf(m['wechatUserId']),
-      wechatKey: strOf(m['wechatKey']),
       studentSnapshots: snaps,
       state: strOf(m['state'], 'connected'),
       lastRefreshAt: intOf(m['lastRefreshAt']),

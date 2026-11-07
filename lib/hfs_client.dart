@@ -428,9 +428,6 @@ class HfsUpstreamClient {
       activeStudentId: session.studentId,
       desiredStudentId: session.studentId,
       wechatSessionCookie: session.wechatCookie,
-      wechatUnionId: session.unionId,
-      wechatUserId: session.userId,
-      wechatKey: session.key,
     );
     await hydrateAccountStudents(account);
     return account;
