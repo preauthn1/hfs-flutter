@@ -23,13 +23,33 @@ jobs:
         with:
           channel: stable
           flutter-version: '3.47.7'
+      - name: Restore durable Android release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "Error: ANDROID_KEYSTORE_BASE64 secret is missing" >&2
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/hfs-flutter-release.jks"
+          cat > android/key.properties <<EOF
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyPassword=$ANDROID_KEY_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=$RUNNER_TEMP/hfs-flutter-release.jks
+          EOF
       - run: flutter pub get
       - run: flutter analyze --no-pub
       - run: flutter build apk --release --target-platform android-arm64
-      - name: Package Android APK
+      - name: Package & verify Android APK signature
         run: |
           mkdir -p out
           cp build/app/outputs/flutter-apk/app-release.apk out/hfs_flutter_android_arm64.apk
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
+          "$APKSIGNER" verify --print-certs out/hfs_flutter_android_arm64.apk
           sha256sum out/hfs_flutter_android_arm64.apk
       - uses: actions/upload-artifact@v4
         with:
@@ -129,8 +149,8 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v2.3.0' }}
-          name: 好分数原生工作台 ${{ github.ref_type == 'tag' && github.ref_name || 'v2.3.0' }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v2.3.1' }}
+          name: 好分数原生工作台 ${{ github.ref_type == 'tag' && github.ref_name || 'v2.3.1' }}
           body: |
             好分数原生 Flutter 客户端（手机 + 电脑全端适配，100% 直连好分数官方后端 `hfs-be.yunxiao.com` / `yj-oss.yunxiao.com`）。
             - **Windows 电脑端安装程序 (`Inno Setup x64`)**: `hfs_flutter_windows_x64_setup.exe`（双击直接安装并创建桌面快捷方式）
