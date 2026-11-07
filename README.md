@@ -1,4 +1,4 @@
-# 好分数 · 原生直连工作台 (`hfs_flutter` v2.6.1)
+# 好分数 · 原生直连工作台 (`hfs_flutter` v2.6.2)
 
 基于 Flutter 与 **Taste-Skill 2.5 设计规范** 构建的好分数原生跨平台工作台，**100% 使用原生 Widget 与 Canvas 渲染（零 WebView）**，严格直连好分数官方后端，不封装本机中转服务。
 
