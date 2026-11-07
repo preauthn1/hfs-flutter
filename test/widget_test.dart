@@ -242,5 +242,14 @@ void main() {
 
     expect(find.text('数学 历次成绩变化趋势折线图与学科均衡度'), findsOneWidget);
     expect(find.text('数学 · 试卷与答题卡调阅'), findsOneWidget);
+
+    // 4. Verify combined Classmates Roster + POST /v2/native-users/bind-students dialog
+    expect(find.text('同班名册与直绑'), findsOneWidget);
+    await tester.tap(find.text('同班名册与直绑'));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(
+      find.text('POST /v2/native-users/bind-students 挂载到：'),
+      findsOneWidget,
+    );
   });
 }

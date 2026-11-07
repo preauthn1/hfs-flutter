@@ -1164,22 +1164,30 @@ class HfsUpstreamClient {
     required String studentId,
   }) async {
     await hydrateAccountStudents(account);
+    final cleanId = studentId.trim();
+    if (cleanId.isEmpty) {
+      throw Exception('studentId 不能为空');
+    }
     final res = await _hfsFetch(
       account,
       '/v2/native-users/bind-students',
       method: 'POST',
       jsonBody: <String, dynamic>{
-        'studentId': studentId.trim(),
+        'studentId': cleanId,
       },
     );
     if (!_isCodeOk(res.body['code'])) {
-      throw Exception(
-        strOf(res.body['msg'], '按学生 ID 绑定失败 (code=${res.body['code']})'),
-      );
+      final code = res.body['code'];
+      final msg = strOf(res.body['msg'], '按 studentId 直绑失败');
+      throw Exception('$msg (code=$code)');
     }
-    account.desiredStudentId = studentId.trim();
-    await ensureAccount(account, targetStudentId: studentId.trim());
-    account.activeStudentId = studentId.trim();
+    account.desiredStudentId = cleanId;
+    await ensureAccount(
+      account,
+      targetStudentId: cleanId,
+      forceSwitchSession: true,
+    );
+    account.activeStudentId = cleanId;
     invalidateCache(account.id);
     return fetchDashboard(account, allowCache: false);
   }

@@ -691,6 +691,21 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         account: acc,
         accounts: _accounts,
         currentStudent: _dashboard?.currentStudent ?? acc.activeStudent,
+        onBound: (boundAcc, dash) async {
+          _selectedAccountId = boundAcc.id;
+          await _persistAccountsAndSettings();
+          await _persistDashboardSnapshot(dash);
+          if (!mounted) return;
+          setState(() {
+            _dashboard = dash;
+            _syncInspectorWithDashboard(dash, openRightPane: true);
+            _rebuildFleetRows();
+          });
+        },
+        onSwitchStudent: (targetAcc, targetStu) {
+          Navigator.of(ctx).pop();
+          _handleSwitchStudent(targetAcc, targetStu);
+        },
       ),
     );
   }
@@ -2293,7 +2308,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                             ),
                           ),
                         _buildTopBarBtn(
-                          label: '同班同学名册',
+                          label: '同班名册与直绑',
                           icon: Icons.people_outline,
                           onTap: _openClassmatesRosterModal,
                         ),

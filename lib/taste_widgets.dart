@@ -831,10 +831,66 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
   bool _submitting = false;
   String? _error;
 
+  // Channel 3: Combined `GET /v2/students/classmates` + `POST /v2/native-users/bind-students`
+  HfsAccount? _rosterSourceAcc;
+  StudentInfo? _rosterSourceStu;
+  List<ClassmateBindEntry> _classmates = const [];
+  bool _loadingClassmates = false;
+  String? _classmatesError;
+  String _classmateSearch = '';
+
   @override
   void initState() {
     super.initState();
     _targetAccount = widget.initialAccount;
+    final all = _allBoundStudents();
+    if (all.isNotEmpty) {
+      final curMatch = all.where(
+        (x) =>
+            x.acc.id == widget.initialAccount.id &&
+            x.stu.studentId == widget.initialAccount.activeStudentId,
+      );
+      final chosen = curMatch.isNotEmpty ? curMatch.first : all.first;
+      _rosterSourceAcc = chosen.acc;
+      _rosterSourceStu = chosen.stu;
+    } else {
+      _rosterSourceAcc = widget.initialAccount;
+    }
+  }
+
+  List<({HfsAccount acc, StudentInfo stu})> _allBoundStudents() {
+    final out = <({HfsAccount acc, StudentInfo stu})>[];
+    for (final a in widget.accounts) {
+      for (final s in a.students) {
+        out.add((acc: a, stu: s));
+      }
+    }
+    return out;
+  }
+
+  Future<void> _loadClassmatesForChannel3() async {
+    final acc = _rosterSourceAcc ?? _targetAccount;
+    setState(() {
+      _loadingClassmates = true;
+      _classmatesError = null;
+    });
+    try {
+      final list = await widget.client.fetchClassmates(
+        acc,
+        studentId: _rosterSourceStu?.studentId ?? '',
+      );
+      if (!mounted) return;
+      setState(() {
+        _classmates = list;
+        _loadingClassmates = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingClassmates = false;
+        _classmatesError = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
   }
 
   @override
@@ -1090,7 +1146,7 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                   _buildChannelChip(0, '姓名 + 学号/考号'),
                   _buildChannelChip(1, '学校 + 年级 + 姓名'),
                   _buildChannelChip(2, '学生端账号密码'),
-                  _buildChannelChip(3, '内部 studentId 直绑'),
+                  _buildChannelChip(3, '同班名册 + studentId 直绑'),
                 ],
               ),
               const SizedBox(height: 12),
@@ -1300,8 +1356,7 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                         _inputField('学生端登录密码', _stuPwdCtrl, '输入学生端密码',
                             obscure: true),
                       ] else ...[
-                        _inputField('内部 studentId', _stuIdCtrl,
-                            '如从同班名册中获取的 24 位数字 ID'),
+                        _buildChannel3ClassmatesAndDirectBind(),
                       ],
                       if (_error != null) ...[
                         const SizedBox(height: 10),
@@ -1361,10 +1416,293 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
       visualDensity: VisualDensity.compact,
       onSelected: _submitting
           ? null
-          : (_) => setState(() {
+          : (_) {
+              setState(() {
                 _channel = idx;
                 _error = null;
-              }),
+              });
+              if (idx == 3 && _classmates.isEmpty && !_loadingClassmates) {
+                _loadClassmatesForChannel3();
+              }
+            },
+    );
+  }
+
+  Widget _buildChannel3ClassmatesAndDirectBind() {
+    final allBound = _allBoundStudents();
+    final filteredClassmates = _classmates.where((c) {
+      if (_classmateSearch.trim().isEmpty) return true;
+      final q = _classmateSearch.trim();
+      return c.name.contains(q) || c.id.contains(q);
+    }).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: _inputField(
+                '直接输入或从下方名册点选 studentId (POST /v2/native-users/bind-students)',
+                _stuIdCtrl,
+                '24 位内部 studentId，点击下方同学可自动填入或直接绑定',
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              height: 36,
+              child: FilledButton.tonal(
+                onPressed: _submitting ? null : () => _submitBind(),
+                child: const Text('直绑该 ID', style: TextStyle(fontSize: 12)),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Taste.raised,
+            borderRadius: BorderRadius.circular(Taste.radiusControl),
+            border: Border.all(color: Taste.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  Text(
+                    '获取同班学生名册 (/v2/students/classmates · 共 ${_classmates.length} 人)',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Taste.text,
+                    ),
+                  ),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                    ),
+                    onPressed:
+                        _loadingClassmates ? null : _loadClassmatesForChannel3,
+                    icon: const Icon(Icons.refresh, size: 14),
+                    label: const Text('刷新名册', style: TextStyle(fontSize: 11)),
+                  ),
+                ],
+              ),
+              if (allBound.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                IsolatedHorizontalScroll(
+                  convertVerticalWheelToHorizontal: true,
+                  child: Row(
+                    children: [
+                      const Text(
+                        '名册班级来源：',
+                        style: TextStyle(fontSize: 11, color: Taste.muted),
+                      ),
+                      const SizedBox(width: 4),
+                      for (final item in allBound)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: ChoiceChip(
+                            visualDensity: VisualDensity.compact,
+                            selected: _rosterSourceAcc?.id == item.acc.id &&
+                                _rosterSourceStu?.studentId ==
+                                    item.stu.studentId,
+                            label: Text(
+                              '${item.stu.studentName} (${item.stu.grade}${item.stu.className})',
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                            onSelected: (_) {
+                              setState(() {
+                                _rosterSourceAcc = item.acc;
+                                _rosterSourceStu = item.stu;
+                              });
+                              _loadClassmatesForChannel3();
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 32,
+                child: TextField(
+                  onChanged: (v) => setState(() => _classmateSearch = v),
+                  style: const TextStyle(fontSize: 12),
+                  decoration: InputDecoration(
+                    hintText: '搜索同班同学姓名或 studentId…',
+                    prefixIcon: const Icon(Icons.search, size: 15),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                    filled: true,
+                    fillColor: Taste.surface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Taste.radiusControl),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (_loadingClassmates)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                )
+              else if (_classmatesError != null)
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(
+                    _classmatesError!,
+                    style: const TextStyle(fontSize: 12, color: Taste.negative),
+                  ),
+                )
+              else if (filteredClassmates.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Center(
+                    child: Text(
+                      '暂无匹配的同班同学记录',
+                      style: TextStyle(fontSize: 12, color: Taste.muted),
+                    ),
+                  ),
+                )
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 240),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: filteredClassmates.length,
+                    separatorBuilder: (ctx, idx) =>
+                        const Divider(height: 1, color: Taste.rule),
+                    itemBuilder: (ctx, i) {
+                      final c = filteredClassmates[i];
+                      final alreadyInTarget = _targetAccount.students
+                          .any((s) => s.studentId == c.id);
+                      final boundAccLabels = widget.accounts
+                          .where(
+                              (a) => a.students.any((s) => s.studentId == c.id))
+                          .map((a) => a.displayLabel)
+                          .toList();
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 6, horizontal: 2),
+                        child: Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Wrap(
+                                  spacing: 5,
+                                  runSpacing: 4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Text(
+                                      '${i + 1}. ${c.name}',
+                                      style: const TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    if (c.isMember)
+                                      const TastePill(
+                                        label: 'VIP',
+                                        tone: TastePillTone.warning,
+                                      ),
+                                    TastePill(
+                                      label: c.hasStudentAccount
+                                          ? '已绑学生端'
+                                          : '无学生号',
+                                      tone: c.hasStudentAccount
+                                          ? TastePillTone.blue
+                                          : TastePillTone.neutral,
+                                    ),
+                                    TastePill(
+                                      label: c.hasParentAccount
+                                          ? '已绑家长端'
+                                          : '无家长号',
+                                      tone: c.hasParentAccount
+                                          ? TastePillTone.positive
+                                          : TastePillTone.warning,
+                                    ),
+                                    if (boundAccLabels.isNotEmpty)
+                                      TastePill(
+                                        label:
+                                            '已绑: ${boundAccLabels.join("/")}',
+                                        tone: TastePillTone.positive,
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                SelectableText(
+                                  'studentId: ${c.id}',
+                                  style: Taste.numStyle(
+                                      size: 10.5, color: Taste.muted),
+                                ),
+                              ],
+                            ),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              children: [
+                                OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8),
+                                  ),
+                                  onPressed: () {
+                                    setState(() => _stuIdCtrl.text = c.id);
+                                  },
+                                  child: const Text('填入ID',
+                                      style: TextStyle(fontSize: 11)),
+                                ),
+                                FilledButton.tonal(
+                                  style: FilledButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10),
+                                  ),
+                                  onPressed: (_submitting || alreadyInTarget)
+                                      ? null
+                                      : () {
+                                          _stuIdCtrl.text = c.id;
+                                          _submitBind(directStudentId: c.id);
+                                        },
+                                  child: Text(
+                                    alreadyInTarget ? '当前号已绑' : '一键直绑',
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -2214,12 +2552,16 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
   }
 }
 
-/// Classmates Roster Dialog (`GET /v2/students/classmates`) with multi-student/class switcher
+/// Classmates Roster + Direct StudentId Bind Dialog
+/// Combines `GET /v2/students/classmates` and `POST /v2/native-users/bind-students`
 class ClassmatesRosterDialog extends StatefulWidget {
   final HfsUpstreamClient client;
   final HfsAccount account;
   final List<HfsAccount> accounts;
   final StudentInfo? currentStudent;
+  final Future<void> Function(HfsAccount targetAccount, DashboardData dash)?
+      onBound;
+  final void Function(HfsAccount account, StudentInfo student)? onSwitchStudent;
 
   const ClassmatesRosterDialog({
     super.key,
@@ -2227,6 +2569,8 @@ class ClassmatesRosterDialog extends StatefulWidget {
     required this.account,
     this.accounts = const [],
     this.currentStudent,
+    this.onBound,
+    this.onSwitchStudent,
   });
 
   @override
@@ -2236,10 +2580,19 @@ class ClassmatesRosterDialog extends StatefulWidget {
 class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
   late HfsAccount _selectedAccount;
   late StudentInfo? _selectedStudent;
+  late HfsAccount _bindTargetAccount;
   List<ClassmateBindEntry> _roster = const [];
   String _search = '';
+  bool _onlyUnboundInTarget = false;
   bool _loading = true;
   String? _error;
+  String? _bindingStudentId;
+  String? _bindSuccessMsg;
+  String? _bindErrorMsg;
+
+  List<HfsAccount> get _availableAccounts => widget.accounts.isNotEmpty
+      ? widget.accounts
+      : <HfsAccount>[widget.account];
 
   @override
   void initState() {
@@ -2247,15 +2600,13 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
     _selectedAccount = widget.account;
     _selectedStudent =
         widget.currentStudent ?? widget.account.activeStudent;
+    _bindTargetAccount = widget.account;
     _load();
   }
 
   List<({HfsAccount acc, StudentInfo stu})> _allBoundStudents() {
-    final sourceAccounts = widget.accounts.isNotEmpty
-        ? widget.accounts
-        : <HfsAccount>[widget.account];
     final out = <({HfsAccount acc, StudentInfo stu})>[];
-    for (final a in sourceAccounts) {
+    for (final a in _availableAccounts) {
       for (final s in a.students) {
         out.add((acc: a, stu: s));
       }
@@ -2287,10 +2638,56 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
     }
   }
 
+  Future<void> _handleBindByStudentId(
+    String studentId, {
+    String? studentLabel,
+  }) async {
+    final cleanId = studentId.trim();
+    if (cleanId.isEmpty || _bindingStudentId != null) return;
+    setState(() {
+      _bindingStudentId = cleanId;
+      _bindErrorMsg = null;
+      _bindSuccessMsg = null;
+    });
+    try {
+      final dash = await widget.client.bindStudentById(
+        account: _bindTargetAccount,
+        studentId: cleanId,
+      );
+      if (widget.onBound != null) {
+        await widget.onBound!(_bindTargetAccount, dash);
+      }
+      if (!mounted) return;
+      final shownName = studentLabel ?? cleanId;
+      setState(() {
+        _bindingStudentId = null;
+        _bindSuccessMsg =
+            '已通过 POST /v2/native-users/bind-students 成功将「$shownName」绑定至账号 [${_bindTargetAccount.displayLabel}]';
+      });
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      final shownName = studentLabel ?? cleanId;
+      setState(() {
+        _bindingStudentId = null;
+        _bindErrorMsg =
+            '直绑「$shownName」到 [${_bindTargetAccount.displayLabel}] 失败：${e.toString().replaceFirst("Exception: ", "")}';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final allAccounts = _availableAccounts;
+    if (!allAccounts.any((a) => a.id == _bindTargetAccount.id)) {
+      _bindTargetAccount = allAccounts.first;
+    }
     final allStudents = _allBoundStudents();
     final filtered = _roster.where((c) {
+      if (_onlyUnboundInTarget &&
+          _bindTargetAccount.students.any((s) => s.studentId == c.id)) {
+        return false;
+      }
       if (_search.trim().isEmpty) return true;
       final q = _search.trim();
       return c.name.contains(q) || c.id.contains(q);
@@ -2304,6 +2701,10 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
             ? '${_selectedStudent!.grade}${_selectedStudent!.className}'
             : '当前班级');
 
+    final trimmedSearch = _search.trim();
+    final canDirectBindSearchId =
+        RegExp(r'^\d{10,32}$').hasMatch(trimmedSearch);
+
     return Dialog(
       backgroundColor: Taste.surface,
       insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
@@ -2311,7 +2712,7 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
         borderRadius: BorderRadius.circular(Taste.radiusCard),
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 680, maxHeight: 720),
+        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 760),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -2321,7 +2722,7 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                 children: [
                   Expanded(
                     child: Text(
-                      '同班同学名册 ($resolvedClassName · 共 ${_roster.length} 人)',
+                      '同班同学名册与直绑 ($resolvedClassName · 共 ${_roster.length} 人)',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -2329,6 +2730,13 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                     ),
                   ),
                   IconButton(
+                    tooltip: '重新拉取同班名册 (GET /v2/students/classmates)',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    onPressed: _loading ? null : _load,
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
                     icon: const Icon(Icons.close, size: 18),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
@@ -2341,7 +2749,7 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                   child: Row(
                     children: [
                       const Text(
-                        '切换班级/学生：',
+                        '获取班级来源：',
                         style: TextStyle(fontSize: 12, color: Taste.muted),
                       ),
                       const SizedBox(width: 6),
@@ -2372,6 +2780,153 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                 ),
               ],
               const SizedBox(height: 8),
+              // Target account selector for POST /v2/native-users/bind-students
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Taste.raised,
+                  borderRadius: BorderRadius.circular(Taste.radiusControl),
+                  border: Border.all(color: Taste.border),
+                ),
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.link, size: 15, color: Taste.accent),
+                        const SizedBox(width: 6),
+                        const Flexible(
+                          child: Text(
+                            'POST /v2/native-users/bind-students 挂载到：',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Taste.text,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 260),
+                          child: SizedBox(
+                            height: 32,
+                            child: DropdownButtonFormField<String>(
+                              key: ValueKey(
+                                  'roster_bind_acc_${_bindTargetAccount.id}_${_bindTargetAccount.students.length}'),
+                              initialValue: _bindTargetAccount.id,
+                              isExpanded: true,
+                              isDense: true,
+                              decoration: InputDecoration(
+                                filled: true,
+                                fillColor: Taste.surface,
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(
+                                      Taste.radiusControl),
+                                ),
+                              ),
+                              items: [
+                                for (final a in allAccounts)
+                                  DropdownMenuItem(
+                                    value: a.id,
+                                    child: Text(
+                                      '${a.displayLabel} (${a.roleType == 1 ? "学生端" : "家长端"} · 已绑${a.students.length}人)',
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                              ],
+                              onChanged: _bindingStudentId != null
+                                  ? null
+                                  : (val) {
+                                      if (val == null) return;
+                                      final found = allAccounts
+                                          .firstWhere((a) => a.id == val);
+                                      setState(() {
+                                        _bindTargetAccount = found;
+                                        _bindErrorMsg = null;
+                                        _bindSuccessMsg = null;
+                                      });
+                                    },
+                            ),
+                          ),
+                        ),
+                        FilterChip(
+                          visualDensity: VisualDensity.compact,
+                          selected: _onlyUnboundInTarget,
+                          label: const Text('仅看未绑',
+                              style: TextStyle(fontSize: 11.5)),
+                          onSelected: (v) =>
+                              setState(() => _onlyUnboundInTarget = v),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (_bindSuccessMsg != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Taste.pillPosBg,
+                    borderRadius: BorderRadius.circular(Taste.radiusControl),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle_outline,
+                          size: 15, color: Taste.positive),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          _bindSuccessMsg!,
+                          style: const TextStyle(
+                              fontSize: 12, color: Taste.pillPosInk),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (_bindErrorMsg != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Taste.pillNegBg,
+                    borderRadius: BorderRadius.circular(Taste.radiusControl),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline,
+                          size: 15, color: Taste.negative),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: SelectableText(
+                          _bindErrorMsg!,
+                          style: const TextStyle(
+                              fontSize: 12, color: Taste.pillNegInk),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 runSpacing: 6,
@@ -2391,23 +2946,49 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 36,
-                child: TextField(
-                  onChanged: (v) => setState(() => _search = v),
-                  style: const TextStyle(fontSize: 13),
-                  decoration: InputDecoration(
-                    hintText: '搜索同学姓名或内部 studentId…',
-                    prefixIcon: const Icon(Icons.search, size: 16),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(Taste.radiusControl),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 36,
+                      child: TextField(
+                        onChanged: (v) => setState(() => _search = v),
+                        style: const TextStyle(fontSize: 13),
+                        decoration: InputDecoration(
+                          hintText: '搜索同学姓名，或粘贴任意 studentId 直接绑定…',
+                          prefixIcon: const Icon(Icons.search, size: 16),
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 0),
+                          border: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(Taste.radiusControl),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  if (canDirectBindSearchId) ...[
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      height: 36,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Taste.primary,
+                          foregroundColor: Taste.primaryInk,
+                        ),
+                        onPressed: _bindingStudentId != null
+                            ? null
+                            : () => _handleBindByStudentId(trimmedSearch),
+                        icon: const Icon(Icons.person_add_alt_1, size: 15),
+                        label: const Text('直绑该 ID',
+                            style: TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Expanded(
                 child: _loading
                     ? const Center(child: CircularProgressIndicator())
@@ -2423,72 +3004,176 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                                 const Divider(height: 1, color: Taste.rule),
                             itemBuilder: (ctx, i) {
                               final c = filtered[i];
+                              final alreadyInTarget = _bindTargetAccount
+                                  .students
+                                  .any((s) => s.studentId == c.id);
+                              final boundMatches = allStudents
+                                  .where((x) => x.stu.studentId == c.id)
+                                  .toList();
+                              final isBindingThis = _bindingStudentId == c.id;
+
                               return Padding(
                                 padding: const EdgeInsets.symmetric(
                                     vertical: 8, horizontal: 4),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                child: Wrap(
+                                  alignment: WrapAlignment.spaceBetween,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  spacing: 8,
+                                  runSpacing: 6,
                                   children: [
-                                    SizedBox(
-                                      width: 28,
-                                      child: Padding(
-                                        padding: const EdgeInsets.only(top: 2),
-                                        child: Text(
-                                          '${i + 1}',
-                                          style: Taste.numStyle(
-                                              size: 12, color: Taste.muted),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        SizedBox(
+                                          width: 28,
+                                          child: Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 2),
+                                            child: Text(
+                                              '${i + 1}',
+                                              style: Taste.numStyle(
+                                                  size: 12,
+                                                  color: Taste.muted),
+                                            ),
+                                          ),
                                         ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Wrap(
-                                            spacing: 6,
-                                            runSpacing: 4,
+                                        Flexible(
+                                          child: Column(
                                             crossAxisAlignment:
-                                                WrapCrossAlignment.center,
+                                                CrossAxisAlignment.start,
                                             children: [
-                                              Text(
-                                                c.name,
-                                                style: const TextStyle(
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w700,
-                                                ),
+                                              Wrap(
+                                                spacing: 6,
+                                                runSpacing: 4,
+                                                crossAxisAlignment:
+                                                    WrapCrossAlignment.center,
+                                                children: [
+                                                  Text(
+                                                    c.name,
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                  if (c.isMember)
+                                                    const TastePill(
+                                                      label: 'VIP',
+                                                      tone:
+                                                          TastePillTone.warning,
+                                                    ),
+                                                  TastePill(
+                                                    label: c.hasStudentAccount
+                                                        ? '已绑学生端'
+                                                        : '无学生号',
+                                                    tone: c.hasStudentAccount
+                                                        ? TastePillTone.blue
+                                                        : TastePillTone.neutral,
+                                                  ),
+                                                  TastePill(
+                                                    label: c.hasParentAccount
+                                                        ? '已绑家长端'
+                                                        : '无家长号',
+                                                    tone: c.hasParentAccount
+                                                        ? TastePillTone.positive
+                                                        : TastePillTone.warning,
+                                                  ),
+                                                  if (boundMatches.isNotEmpty)
+                                                    TastePill(
+                                                      label:
+                                                          '已在库: ${boundMatches.map((m) => m.acc.displayLabel).toSet().join("/")}',
+                                                      tone: TastePillTone
+                                                          .positive,
+                                                    ),
+                                                ],
                                               ),
-                                              if (c.isMember)
-                                                const TastePill(
-                                                  label: 'VIP',
-                                                  tone: TastePillTone.warning,
-                                                ),
-                                              TastePill(
-                                                label: c.hasStudentAccount
-                                                    ? '已绑学生端'
-                                                    : '无学生号',
-                                                tone: c.hasStudentAccount
-                                                    ? TastePillTone.blue
-                                                    : TastePillTone.neutral,
-                                              ),
-                                              TastePill(
-                                                label: c.hasParentAccount
-                                                    ? '已绑家长端'
-                                                    : '无家长号',
-                                                tone: c.hasParentAccount
-                                                    ? TastePillTone.positive
-                                                    : TastePillTone.warning,
+                                              const SizedBox(height: 3),
+                                              SelectableText(
+                                                'studentId: ${c.id}',
+                                                style: Taste.numStyle(
+                                                    size: 11,
+                                                    color: Taste.muted),
                                               ),
                                             ],
                                           ),
-                                          const SizedBox(height: 3),
-                                          SelectableText(
-                                            'studentId: ${c.id}',
-                                            style: Taste.numStyle(
-                                                size: 11, color: Taste.muted),
+                                        ),
+                                      ],
+                                    ),
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 4,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        OutlinedButton(
+                                          style: OutlinedButton.styleFrom(
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 8),
                                           ),
-                                        ],
-                                      ),
+                                          onPressed: () {
+                                            Clipboard.setData(
+                                                ClipboardData(text: c.id));
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                    '已复制 ${c.name} 的 studentId: ${c.id}'),
+                                                duration: const Duration(
+                                                    seconds: 2),
+                                              ),
+                                            );
+                                          },
+                                          child: const Text('复制ID',
+                                              style: TextStyle(fontSize: 11)),
+                                        ),
+                                        if (boundMatches.isNotEmpty &&
+                                            widget.onSwitchStudent != null)
+                                          OutlinedButton(
+                                            style: OutlinedButton.styleFrom(
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 8),
+                                            ),
+                                            onPressed: () =>
+                                                widget.onSwitchStudent!(
+                                              boundMatches.first.acc,
+                                              boundMatches.first.stu,
+                                            ),
+                                            child: const Text('查看成绩',
+                                                style: TextStyle(fontSize: 11)),
+                                          ),
+                                        FilledButton.tonal(
+                                          style: FilledButton.styleFrom(
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 10),
+                                          ),
+                                          onPressed: (_bindingStudentId !=
+                                                      null ||
+                                                  alreadyInTarget)
+                                              ? null
+                                              : () => _handleBindByStudentId(
+                                                    c.id,
+                                                    studentLabel: c.name,
+                                                  ),
+                                          child: Text(
+                                            isBindingThis
+                                                ? '直绑中…'
+                                                : (alreadyInTarget
+                                                    ? '该号已绑'
+                                                    : '一键直绑'),
+                                            style:
+                                                const TextStyle(fontSize: 11.5),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
