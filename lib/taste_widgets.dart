@@ -114,15 +114,16 @@ class TastePill extends StatelessWidget {
         break;
     }
     return Container(
-      height: 22,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      alignment: Alignment.center,
+      constraints: const BoxConstraints(minHeight: 22),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontFamily: Taste.fontFamily,
           fontSize: 11,
@@ -502,7 +503,10 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
             ),
             const SizedBox(height: 12),
           ],
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               const Text(
                 '客户端类型：',
@@ -513,7 +517,6 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
                   color: Taste.muted,
                 ),
               ),
-              const SizedBox(width: 8),
               ChoiceChip(
                 label: const Text('家长版 (可绑多人)', style: TextStyle(fontSize: 12)),
                 selected: _roleType == 2,
@@ -522,7 +525,6 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
                     : (_) => setState(() => _roleType = 2),
                 visualDensity: VisualDensity.compact,
               ),
-              const SizedBox(width: 8),
               ChoiceChip(
                 label: const Text('学生版', style: TextStyle(fontSize: 12)),
                 selected: _roleType == 1,
@@ -705,19 +707,24 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
         borderRadius: BorderRadius.circular(4),
         child: Container(
           height: 30,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: active ? Taste.surface : Colors.transparent,
             borderRadius: BorderRadius.circular(4),
             border: active ? Border.all(color: Taste.border) : null,
           ),
-          child: Text(
-            title,
-            style: TextStyle(
-              fontFamily: Taste.fontFamily,
-              fontSize: 12,
-              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-              color: active ? Taste.text : Taste.muted,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              title,
+              maxLines: 1,
+              style: TextStyle(
+                fontFamily: Taste.fontFamily,
+                fontSize: 12,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                color: active ? Taste.text : Taste.muted,
+              ),
             ),
           ),
         ),
@@ -996,13 +1003,14 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
 
     return Dialog(
       backgroundColor: Taste.surface,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Taste.radiusCard),
       ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480, maxHeight: 680),
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1041,6 +1049,7 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                     child: DropdownButtonFormField<String>(
                       key: ValueKey('bind_acc_${_targetAccount.id}'),
                       initialValue: _targetAccount.id,
+                      isExpanded: true,
                       isDense: true,
                       decoration: InputDecoration(
                         contentPadding: const EdgeInsets.symmetric(
@@ -1056,6 +1065,7 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                             value: a.id,
                             child: Text(
                               '${a.displayLabel} (${a.roleType == 1 ? "学生端" : "家长端"} · 已绑${a.students.length}人)',
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 12),
                             ),
                           ),
@@ -1117,11 +1127,13 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                               onPressed:
                                   _loadingRegions ? null : _loadRegionsIfNeeded,
                               icon: const Icon(Icons.map_outlined, size: 15),
-                              label: Text(
-                                _loadingRegions
-                                    ? '正在加载省市区…'
-                                    : '不知道学校 ID？展开省市区检索学校',
-                                style: const TextStyle(fontSize: 12),
+                              label: Flexible(
+                                child: Text(
+                                  _loadingRegions
+                                      ? '正在加载省市区…'
+                                      : '不知道学校 ID？展开省市区检索学校',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
                               ),
                             ),
                           )
@@ -1933,27 +1945,29 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
               spacing: 8,
               runSpacing: 6,
               children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     TastePill(
                       label: '#$idx · 第 ${item.shortName} 题',
                       tone: TastePillTone.negative,
                     ),
-                    const SizedBox(width: 8),
                     TastePill(
                       label: item.style,
                       tone: TastePillTone.neutral,
                     ),
-                    const SizedBox(width: 8),
                     Text(
                       item.examName,
                       style: const TextStyle(fontSize: 12, color: Taste.muted),
                     ),
                   ],
                 ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
                       '得分 ${round1(item.myScore)} / ${round1(item.score)}分',
@@ -1963,15 +1977,12 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
                         color: Taste.negative,
                       ),
                     ),
-                    if (item.classAvgScore > 0) ...[
-                      const SizedBox(width: 8),
+                    if (item.classAvgScore > 0)
                       Text(
                         '(班均 ${round2(item.classAvgScore)}分)',
                         style: Taste.numStyle(size: 12, color: Taste.muted),
                       ),
-                    ],
-                    if (item.paperId.isNotEmpty) ...[
-                      const SizedBox(width: 10),
+                    if (item.paperId.isNotEmpty)
                       OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(
                           visualDensity: VisualDensity.compact,
@@ -1986,7 +1997,6 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
                         label: const Text('调阅整卷答题卡',
                             style: TextStyle(fontSize: 11)),
                       ),
-                    ],
                   ],
                 ),
               ],
@@ -2136,17 +2146,20 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
         borderRadius: BorderRadius.circular(Taste.radiusCard),
         border: Border.all(color: Taste.border),
       ),
-      child: ExpansionTile(
-        title: const Text(
-          '好分数账号权益与学校门禁配置明细',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: Taste.text,
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: Colors.transparent,
+        child: ExpansionTile(
+          title: const Text(
+            '好分数账号权益与学校门禁配置明细',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Taste.text,
+            ),
           ),
-        ),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        children: [
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          children: [
           Wrap(
             spacing: 12,
             runSpacing: 8,
@@ -2194,7 +2207,8 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
               ),
             ),
           ],
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2292,13 +2306,14 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
 
     return Dialog(
       backgroundColor: Taste.surface,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Taste.radiusCard),
       ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 680, maxHeight: 720),
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -2412,13 +2427,17 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                                 padding: const EdgeInsets.symmetric(
                                     vertical: 8, horizontal: 4),
                                 child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     SizedBox(
-                                      width: 32,
-                                      child: Text(
-                                        '${i + 1}',
-                                        style: Taste.numStyle(
-                                            size: 12, color: Taste.muted),
+                                      width: 28,
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(top: 2),
+                                        child: Text(
+                                          '${i + 1}',
+                                          style: Taste.numStyle(
+                                              size: 12, color: Taste.muted),
+                                        ),
                                       ),
                                     ),
                                     Expanded(
@@ -2426,7 +2445,11 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          Row(
+                                          Wrap(
+                                            spacing: 6,
+                                            runSpacing: 4,
+                                            crossAxisAlignment:
+                                                WrapCrossAlignment.center,
                                             children: [
                                               Text(
                                                 c.name,
@@ -2435,15 +2458,30 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                                                   fontWeight: FontWeight.w700,
                                                 ),
                                               ),
-                                              if (c.isMember) ...[
-                                                const SizedBox(width: 6),
+                                              if (c.isMember)
                                                 const TastePill(
                                                   label: 'VIP',
                                                   tone: TastePillTone.warning,
                                                 ),
-                                              ],
+                                              TastePill(
+                                                label: c.hasStudentAccount
+                                                    ? '已绑学生端'
+                                                    : '无学生号',
+                                                tone: c.hasStudentAccount
+                                                    ? TastePillTone.blue
+                                                    : TastePillTone.neutral,
+                                              ),
+                                              TastePill(
+                                                label: c.hasParentAccount
+                                                    ? '已绑家长端'
+                                                    : '无家长号',
+                                                tone: c.hasParentAccount
+                                                    ? TastePillTone.positive
+                                                    : TastePillTone.warning,
+                                              ),
                                             ],
                                           ),
+                                          const SizedBox(height: 3),
                                           SelectableText(
                                             'studentId: ${c.id}',
                                             style: Taste.numStyle(
@@ -2451,23 +2489,6 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                                           ),
                                         ],
                                       ),
-                                    ),
-                                    TastePill(
-                                      label: c.hasStudentAccount
-                                          ? '已绑学生端'
-                                          : '无学生号',
-                                      tone: c.hasStudentAccount
-                                          ? TastePillTone.blue
-                                          : TastePillTone.neutral,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    TastePill(
-                                      label: c.hasParentAccount
-                                          ? '已绑家长端'
-                                          : '无家长号',
-                                      tone: c.hasParentAccount
-                                          ? TastePillTone.positive
-                                          : TastePillTone.warning,
                                     ),
                                   ],
                                 ),
@@ -2697,27 +2718,27 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
                     style: TextStyle(fontSize: 12, color: Taste.muted),
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 34,
-                          child: TextField(
-                            controller: filePathCtrl,
-                            style: const TextStyle(fontSize: 12),
-                            decoration: InputDecoration(
-                              hintText: '指定凭证文件完整路径（留空则自动存至 Downloads/桌面）',
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 6),
-                              border: OutlineInputBorder(
-                                borderRadius:
-                                    BorderRadius.circular(Taste.radiusControl),
-                              ),
-                            ),
-                          ),
+                  SizedBox(
+                    height: 34,
+                    child: TextField(
+                      controller: filePathCtrl,
+                      style: const TextStyle(fontSize: 12),
+                      decoration: InputDecoration(
+                        hintText: '指定凭证文件完整路径（留空则自动存至 Downloads）',
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        border: OutlineInputBorder(
+                          borderRadius:
+                              BorderRadius.circular(Taste.radiusControl),
                         ),
                       ),
-                      const SizedBox(width: 6),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
                       OutlinedButton.icon(
                         onPressed: () async {
                           try {
@@ -2739,13 +2760,12 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
                         label: const Text('导出为文件',
                             style: TextStyle(fontSize: 12)),
                       ),
-                      const SizedBox(width: 6),
                       OutlinedButton.icon(
                         onPressed: () async {
                           final p = filePathCtrl.text.trim();
                           if (p.isEmpty) {
                             setModalState(() {
-                              modalFeedback = '请先在左侧输入框填写要读取的 .json 凭证文件路径';
+                              modalFeedback = '请先在上方输入框填写要读取的 .json 凭证文件路径';
                             });
                             return;
                           }
@@ -2838,13 +2858,14 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Taste.surface,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Taste.radiusCard),
       ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 540, maxHeight: 700),
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -2878,19 +2899,22 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Row(
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
-                        const Expanded(
-                          child: Text(
-                            '单次拉取历史考试上限（场次越少首次同步越快）：',
-                            style: TextStyle(fontSize: 12, color: Taste.muted),
-                          ),
+                        const Text(
+                          '单次拉取历史考试上限（场次越少首次同步越快）：',
+                          style: TextStyle(fontSize: 12, color: Taste.muted),
                         ),
                         DropdownButton<int>(
                           value: _draft.maxExamsToHydrate,
                           items: const [
                             DropdownMenuItem(value: 5, child: Text('最近 5 场')),
-                            DropdownMenuItem(value: 10, child: Text('最近 10 场 (推荐)')),
+                            DropdownMenuItem(
+                                value: 10, child: Text('最近 10 场 (推荐)')),
                             DropdownMenuItem(value: 15, child: Text('最近 15 场')),
                             DropdownMenuItem(value: 25, child: Text('最近 25 场')),
                           ],
@@ -2903,19 +2927,22 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
                         ),
                       ],
                     ),
-                    Row(
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
-                        const Expanded(
-                          child: Text(
-                            '考试详情并发请求数：',
-                            style: TextStyle(fontSize: 12, color: Taste.muted),
-                          ),
+                        const Text(
+                          '考试详情并发请求数：',
+                          style: TextStyle(fontSize: 12, color: Taste.muted),
                         ),
                         DropdownButton<int>(
                           value: _draft.examConcurrency,
                           items: const [
                             DropdownMenuItem(value: 2, child: Text('2 并发')),
-                            DropdownMenuItem(value: 4, child: Text('4 并发 (推荐)')),
+                            DropdownMenuItem(
+                                value: 4, child: Text('4 并发 (推荐)')),
                             DropdownMenuItem(value: 6, child: Text('6 并发')),
                           ],
                           onChanged: (v) {
@@ -3069,9 +3096,12 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
                                         for (final ep in _diagEndpoints)
                                           DropdownMenuItem(
                                             value: ep.path,
-                                            child: Text(ep.label,
-                                                style: const TextStyle(
-                                                    fontSize: 12)),
+                                            child: Text(
+                                              ep.label,
+                                              overflow: TextOverflow.ellipsis,
+                                              style:
+                                                  const TextStyle(fontSize: 12),
+                                            ),
                                           ),
                                       ],
                                       onChanged: (v) {
@@ -3311,19 +3341,22 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
                   children: [
                     const Icon(Icons.show_chart, size: 18, color: Taste.accent),
                     const SizedBox(width: 8),
-                    Text(
-                      '$_metricSubject 历次成绩变化趋势折线图与学科均衡度',
-                      style: const TextStyle(
-                        fontFamily: Taste.fontFamily,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Taste.text,
+                    Flexible(
+                      child: Text(
+                        '$_metricSubject 历次成绩变化趋势折线图与学科均衡度',
+                        style: const TextStyle(
+                          fontFamily: Taste.fontFamily,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Taste.text,
+                        ),
                       ),
                     ),
                   ],
                 ),
                 Wrap(
                   spacing: 8,
+                  runSpacing: 6,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     if (points.isNotEmpty) ...[
@@ -3501,18 +3534,20 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  Text(
-                    '${formatDateMs(activePt.exam.time)} · ${activePt.exam.name}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Taste.text,
+                  Flexible(
+                    child: Text(
+                      '${formatDateMs(activePt.exam.time)} · ${activePt.exam.name}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Taste.text,
+                      ),
                     ),
                   ),
                 ],
               ),
               Text(
-                '$_metricSubject：${activePt.subtitle}（点击折线节点可切换考试与右侧答题卡）',
+                '$_metricSubject：${activePt.subtitle}（点击折线节点可切换考试与答题卡）',
                 style: Taste.numStyle(
                   size: 12,
                   weight: FontWeight.w500,
@@ -3735,6 +3770,7 @@ class _ScoreLineChartPainter extends CustomPainter {
       );
       _drawLabel(
         canvas,
+        size,
         isPercentage ? '${gv.round()}%' : '${gv.round()}',
         Offset(2, gy - 7),
         color: Taste.faint,
@@ -3845,10 +3881,11 @@ class _ScoreLineChartPainter extends CustomPainter {
           ..style = PaintingStyle.stroke,
       );
 
-      // Value label above point
+      // Value label above point (clamped horizontally inside canvas bounds)
       if (points.length <= 10 || isSel || isHov || i == points.length - 1) {
         _drawLabel(
           canvas,
+          size,
           pt.displayValue,
           Offset(px - 16, py - 18),
           color: isSel || isHov ? Taste.text : Taste.accent,
@@ -3857,13 +3894,14 @@ class _ScoreLineChartPainter extends CustomPainter {
         );
       }
 
-      // X-axis date label
+      // X-axis date label (clamped horizontally inside canvas bounds)
       if (i % labelStep == 0 || i == points.length - 1 || isSel) {
         final dateStr = formatDateMs(pt.exam.time);
         final shortDate =
             dateStr.length >= 10 ? dateStr.substring(5, 10) : dateStr;
         _drawLabel(
           canvas,
+          size,
           shortDate,
           Offset(px - 16, topPad + plotH + 6),
           color: isSel ? Taste.text : Taste.muted,
@@ -3876,6 +3914,7 @@ class _ScoreLineChartPainter extends CustomPainter {
 
   void _drawLabel(
     Canvas canvas,
+    Size canvasSize,
     String text,
     Offset offset, {
     required Color color,
@@ -3895,7 +3934,13 @@ class _ScoreLineChartPainter extends CustomPainter {
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    tp.paint(canvas, offset);
+    final double safeX = offset.dx
+        .clamp(2.0, math.max(2.0, canvasSize.width - tp.width - 2.0))
+        .toDouble();
+    final double safeY = offset.dy
+        .clamp(1.0, math.max(1.0, canvasSize.height - tp.height - 1.0))
+        .toDouble();
+    tp.paint(canvas, Offset(safeX, safeY));
   }
 
   @override

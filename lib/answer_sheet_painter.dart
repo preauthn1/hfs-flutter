@@ -1423,151 +1423,305 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
   Widget build(BuildContext context) {
     final item = _currentItem;
     final totalCount = widget.items.length;
+    final screenW = MediaQuery.of(context).size.width;
+    final isCompactMobile = screenW < 640;
 
     return Dialog.fullscreen(
       backgroundColor: const Color(0xF2131416),
-      child: Column(
-        children: [
-          // Top Toolbar
-          Container(
-            height: 52,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: const BoxDecoration(
-              color: Color(0xFF131416),
-              border: Border(bottom: BorderSide(color: Color(0xFF2E3033))),
+      child: SafeArea(
+        child: Column(
+          children: [
+            // Top Toolbar
+            Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: isCompactMobile ? 8 : 16,
+                vertical: isCompactMobile ? 4 : 6,
+              ),
+              decoration: const BoxDecoration(
+                color: Color(0xFF131416),
+                border: Border(bottom: BorderSide(color: Color(0xFF2E3033))),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      if (totalCount > 1) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1B6C80),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '${_currentIndex + 1}/$totalCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: [ui.FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        if (!isCompactMobile) ...[
+                          IconButton(
+                            tooltip: '上一张 (键盘 ← / PageUp)',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () =>
+                                _switchGalleryIndex(_currentIndex - 1),
+                            icon: const Icon(Icons.chevron_left,
+                                color: Colors.white, size: 22),
+                          ),
+                          IconButton(
+                            tooltip: '下一张 (键盘 → / PageDown)',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () =>
+                                _switchGalleryIndex(_currentIndex + 1),
+                            icon: const Icon(Icons.chevron_right,
+                                color: Colors.white, size: 22),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                      ],
+                      Expanded(
+                        child: Text(
+                          item.caption,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: isCompactMobile ? 12.5 : 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (!isCompactMobile) ...[
+                        if (item.overlay != null) ...[
+                          TextButton.icon(
+                            onPressed: () =>
+                                setState(() => _showOverlay = !_showOverlay),
+                            icon: Icon(
+                              _showOverlay
+                                  ? Icons.layers_outlined
+                                  : Icons.layers_clear_outlined,
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                            label: Text(
+                              _showOverlay ? '隐藏批改层' : '显示批改层',
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 12),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        if (_bytes != null) ...[
+                          TextButton.icon(
+                            onPressed: _copyCurrentToClipboard,
+                            icon: const Icon(Icons.copy,
+                                size: 15, color: Colors.white),
+                            label: const Text(
+                              '复制图片 (Ctrl+C)',
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: () =>
+                                _saveCurrentToDownloads(useSaveAsDialog: false),
+                            icon: const Icon(Icons.download_outlined,
+                                size: 16, color: Colors.white),
+                            label: const Text(
+                              '保存至下载 (Ctrl+S)',
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                          ),
+                          if (Platform.isWindows)
+                            TextButton.icon(
+                              onPressed: () => _saveCurrentToDownloads(
+                                  useSaveAsDialog: true),
+                              icon: const Icon(Icons.folder_open_outlined,
+                                  size: 15, color: Colors.white70),
+                              label: const Text(
+                                '另存为…',
+                                style: TextStyle(
+                                    color: Colors.white70, fontSize: 12),
+                              ),
+                            ),
+                          const SizedBox(width: 4),
+                        ],
+                        IconButton(
+                          tooltip: '缩小 (-)',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => _setScale(_scale / 1.25),
+                          icon: const Icon(Icons.remove,
+                              color: Colors.white, size: 18),
+                        ),
+                        InkWell(
+                          onTap: _resetTransform,
+                          borderRadius: BorderRadius.circular(4),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 4),
+                            child: Text(
+                              '${(_scale * 100).round()}%',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                fontFeatures: [ui.FontFeature.tabularFigures()],
+                              ),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: '放大 (+)',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => _setScale(_scale * 1.25),
+                          icon: const Icon(Icons.add,
+                              color: Colors.white, size: 18),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      IconButton(
+                        tooltip: '关闭 (Esc)',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close,
+                            color: Colors.white, size: 20),
+                      ),
+                    ],
+                  ),
+                  if (isCompactMobile)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2, bottom: 2),
+                      child: IsolatedHorizontalScroll(
+                        child: Row(
+                          children: [
+                            if (totalCount > 1) ...[
+                              TextButton.icon(
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 8),
+                                ),
+                                onPressed: () =>
+                                    _switchGalleryIndex(_currentIndex - 1),
+                                icon: const Icon(Icons.chevron_left,
+                                    size: 16, color: Colors.white),
+                                label: const Text('上一张',
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 11.5)),
+                              ),
+                              TextButton.icon(
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 8),
+                                ),
+                                onPressed: () =>
+                                    _switchGalleryIndex(_currentIndex + 1),
+                                icon: const Icon(Icons.chevron_right,
+                                    size: 16, color: Colors.white),
+                                label: const Text('下一张',
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 11.5)),
+                              ),
+                            ],
+                            if (item.overlay != null)
+                              TextButton.icon(
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 8),
+                                ),
+                                onPressed: () => setState(
+                                    () => _showOverlay = !_showOverlay),
+                                icon: Icon(
+                                  _showOverlay
+                                      ? Icons.layers_outlined
+                                      : Icons.layers_clear_outlined,
+                                  size: 15,
+                                  color: Colors.white,
+                                ),
+                                label: Text(
+                                  _showOverlay ? '隐藏批改' : '显示批改',
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 11.5),
+                                ),
+                              ),
+                            if (_bytes != null) ...[
+                              TextButton.icon(
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 8),
+                                ),
+                                onPressed: _copyCurrentToClipboard,
+                                icon: const Icon(Icons.copy,
+                                    size: 14, color: Colors.white),
+                                label: const Text('复制',
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 11.5)),
+                              ),
+                              TextButton.icon(
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 8),
+                                ),
+                                onPressed: () => _saveCurrentToDownloads(
+                                    useSaveAsDialog: false),
+                                icon: const Icon(Icons.download_outlined,
+                                    size: 15, color: Colors.white),
+                                label: const Text('保存图片',
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 11.5)),
+                              ),
+                            ],
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints(
+                                  minWidth: 30, minHeight: 30),
+                              padding: EdgeInsets.zero,
+                              onPressed: () => _setScale(_scale / 1.25),
+                              icon: const Icon(Icons.remove,
+                                  color: Colors.white, size: 16),
+                            ),
+                            InkWell(
+                              onTap: _resetTransform,
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 4),
+                                child: Text(
+                                  '${(_scale * 100).round()}%',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints(
+                                  minWidth: 30, minHeight: 30),
+                              padding: EdgeInsets.zero,
+                              onPressed: () => _setScale(_scale * 1.25),
+                              icon: const Icon(Icons.add,
+                                  color: Colors.white, size: 16),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
-            child: Row(
-              children: [
-                if (totalCount > 1) ...[
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1B6C80),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      '${_currentIndex + 1} / $totalCount',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        fontFeatures: [ui.FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    tooltip: '上一张 (键盘 ← / PageUp)',
-                    onPressed: () => _switchGalleryIndex(_currentIndex - 1),
-                    icon: const Icon(Icons.chevron_left,
-                        color: Colors.white, size: 22),
-                  ),
-                  IconButton(
-                    tooltip: '下一张 (键盘 → / PageDown)',
-                    onPressed: () => _switchGalleryIndex(_currentIndex + 1),
-                    icon: const Icon(Icons.chevron_right,
-                        color: Colors.white, size: 22),
-                  ),
-                  const SizedBox(width: 6),
-                ],
-                Expanded(
-                  child: Text(
-                    item.caption,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                if (item.overlay != null) ...[
-                  TextButton.icon(
-                    onPressed: () =>
-                        setState(() => _showOverlay = !_showOverlay),
-                    icon: Icon(
-                      _showOverlay
-                          ? Icons.layers_outlined
-                          : Icons.layers_clear_outlined,
-                      size: 16,
-                      color: Colors.white,
-                    ),
-                    label: Text(
-                      _showOverlay ? '隐藏批改层' : '显示批改层',
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                ],
-                if (_bytes != null) ...[
-                  TextButton.icon(
-                    onPressed: _copyCurrentToClipboard,
-                    icon: const Icon(Icons.copy, size: 15, color: Colors.white),
-                    label: const Text(
-                      '复制图片 (Ctrl+C)',
-                      style: TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: () => _saveCurrentToDownloads(useSaveAsDialog: false),
-                    icon: const Icon(Icons.download_outlined,
-                        size: 16, color: Colors.white),
-                    label: const Text(
-                      '保存至下载 (Ctrl+S)',
-                      style: TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ),
-                  if (Platform.isWindows)
-                    TextButton.icon(
-                      onPressed: () =>
-                          _saveCurrentToDownloads(useSaveAsDialog: true),
-                      icon: const Icon(Icons.folder_open_outlined,
-                          size: 15, color: Colors.white70),
-                      label: const Text(
-                        '另存为…',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                    ),
-                  const SizedBox(width: 6),
-                ],
-                IconButton(
-                  tooltip: '缩小 (-)',
-                  onPressed: () => _setScale(_scale / 1.25),
-                  icon: const Icon(Icons.remove, color: Colors.white, size: 18),
-                ),
-                InkWell(
-                  onTap: _resetTransform,
-                  borderRadius: BorderRadius.circular(4),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: Text(
-                      '${(_scale * 100).round()}%',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        fontFeatures: [ui.FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  tooltip: '放大 (+)',
-                  onPressed: () => _setScale(_scale * 1.25),
-                  icon: const Icon(Icons.add, color: Colors.white, size: 18),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  tooltip: '关闭 (Esc)',
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close, color: Colors.white, size: 20),
-                ),
-              ],
-            ),
-          ),
 
           // Main Interactive Stage
           Expanded(
@@ -1838,8 +1992,9 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
                           );
                         },
                       ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

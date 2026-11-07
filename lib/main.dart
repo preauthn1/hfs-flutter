@@ -637,11 +637,12 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
       context: context,
       builder: (ctx) => Dialog(
         backgroundColor: Taste.surface,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Taste.radiusCard),
         ),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           child: HfsAuthPanel(
             client: _client,
             reauthAccount: reauthAccount,
@@ -1194,7 +1195,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
     final curExam = _selectedExam;
     return Container(
       height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 14 : 10),
       color: Taste.ground,
       child: Row(
         children: [
@@ -1222,18 +1223,32 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              isDesktop ? '好分数成绩工作台' : '好分数工作台',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: Taste.text,
+          if (isDesktop)
+            Flexible(
+              child: Text(
+                '好分数成绩工作台',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Taste.text,
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: Text(
+                '好分数工作台',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
+                  color: Taste.text,
+                ),
               ),
             ),
-          ),
           if (isDesktop) ...[
             const SizedBox(width: 8),
             Container(
@@ -1247,7 +1262,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
               ),
             ),
           ],
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           if (isDesktop) const Spacer(),
           if (isDesktop) ...[
             _buildStatPill('已挂账号', '${_accounts.length}'),
@@ -1260,18 +1275,21 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
             ),
             const SizedBox(width: 14),
           ],
-          if (_loadingDashboard && isDesktop)
+          if (_loadingDashboard)
             Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              margin: const EdgeInsets.only(right: 6),
+              padding: EdgeInsets.symmetric(
+                horizontal: isDesktop ? 10 : 6,
+                vertical: 4,
+              ),
               decoration: BoxDecoration(
                 color: Taste.text,
                 borderRadius: BorderRadius.circular(Taste.radiusControl),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(
+                  const SizedBox(
                     width: 11,
                     height: 11,
                     child: CircularProgressIndicator(
@@ -1279,28 +1297,32 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                       color: Colors.white,
                     ),
                   ),
-                  SizedBox(width: 6),
-                  Text(
-                    '同步中…',
-                    style: TextStyle(fontSize: 11, color: Colors.white),
-                  ),
+                  if (isDesktop) ...[
+                    const SizedBox(width: 6),
+                    const Text(
+                      '同步中…',
+                      style: TextStyle(fontSize: 11, color: Colors.white),
+                    ),
+                  ],
                 ],
               ),
             ),
           _buildTopBarBtn(
             label: isDesktop ? '账号登录/注册' : '加号',
             icon: Icons.person_add_alt_outlined,
+            compact: !isDesktop,
             onTap: () => _openAuthOrRegisterModal(),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 5),
           _buildTopBarBtn(
             label: isDesktop ? '刷新当前' : '刷新',
             icon: Icons.refresh,
+            compact: !isDesktop,
             onTap: _loadingDashboard
                 ? null
                 : () => _loadDashboardForCurrent(allowCache: false),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 5),
           if (isDesktop) ...[
             _buildTopBarBtn(
               label: '导出凭证',
@@ -1312,6 +1334,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
           _buildTopBarBtn(
             label: '设置',
             icon: Icons.tune,
+            compact: !isDesktop,
             onTap: _openSettingsModal,
           ),
         ],
@@ -1356,6 +1379,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
     required String label,
     required IconData icon,
     required VoidCallback? onTap,
+    bool compact = false,
   }) {
     return SizedBox(
       height: 30,
@@ -1364,17 +1388,19 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
           backgroundColor: Taste.surface,
           foregroundColor: Taste.text,
           side: const BorderSide(color: Taste.control),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          padding: EdgeInsets.symmetric(horizontal: compact ? 7 : 10),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(Taste.radiusControl),
           ),
         ),
         onPressed: onTap,
-        icon: Icon(icon, size: 14, color: Taste.text),
+        icon: Icon(icon, size: compact ? 13 : 14, color: Taste.text),
         label: Text(
           label,
-          style: const TextStyle(
-            fontSize: 12,
+          style: TextStyle(
+            fontSize: compact ? 11.5 : 12,
             fontWeight: FontWeight.w500,
             color: Taste.text,
           ),
@@ -1439,8 +1465,11 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 6,
               children: [
                 const Text(
                   '好分数账号与绑定学生',
@@ -1450,7 +1479,9 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                     color: Taste.muted,
                   ),
                 ),
-                Row(
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
                   children: [
                     _miniIconBtn(
                       label: '同步当前',
@@ -1458,7 +1489,6 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                           ? null
                           : () => _loadDashboardForCurrent(allowCache: false),
                     ),
-                    const SizedBox(width: 4),
                     _miniIconBtn(
                       label: '注册/登录',
                       active: true,
@@ -1482,8 +1512,11 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
           // Inline Quick-Add Account Box (#quick-add-box)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 6,
               children: [
                 const Text(
                   '挂载更多好分数账号',
@@ -1493,7 +1526,9 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                     color: Taste.muted,
                   ),
                 ),
-                Row(
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
                   children: [
                     _miniIconBtn(
                       label: _showInlineQuickAddAccount ? '收起' : '＋ 快速加号',
@@ -1502,7 +1537,6 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                           _showInlineQuickAddAccount =
                               !_showInlineQuickAddAccount),
                     ),
-                    const SizedBox(width: 4),
                     _miniIconBtn(
                       label: '注册新号',
                       onTap: () => _openAuthOrRegisterModal(),
@@ -1716,39 +1750,43 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
               color: Taste.surface,
               border: Border(bottom: BorderSide(color: Taste.rule)),
             ),
-            child: Row(
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 6,
               children: [
-                Expanded(
-                  child: Text(
-                    schoolTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: Taste.muted,
-                    ),
+                Text(
+                  schoolTitle,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: Taste.muted,
                   ),
                 ),
-                _miniIconBtn(
-                  label: isProbingThis ? '遍历中…' : '遍历全员',
-                  onTap: isProbingThis
-                      ? null
-                      : () => _handleProbeAccountStudents(acc),
-                ),
-                const SizedBox(width: 4),
-                _miniIconBtn(
-                  label: isBindingHere ? '收起' : '＋绑学生',
-                  active: isBindingHere,
-                  onTap: () => setState(() {
-                    _inlineBindAccountId = isBindingHere ? null : acc.id;
-                  }),
-                ),
-                const SizedBox(width: 4),
-                _miniIconBtn(
-                  label: '高级',
-                  onTap: () =>
-                      _openAdvancedBindStudentModal(targetAccount: acc),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: [
+                    _miniIconBtn(
+                      label: isProbingThis ? '遍历中…' : '遍历全员',
+                      onTap: isProbingThis
+                          ? null
+                          : () => _handleProbeAccountStudents(acc),
+                    ),
+                    _miniIconBtn(
+                      label: isBindingHere ? '收起' : '＋绑学生',
+                      active: isBindingHere,
+                      onTap: () => setState(() {
+                        _inlineBindAccountId = isBindingHere ? null : acc.id;
+                      }),
+                    ),
+                    _miniIconBtn(
+                      label: '高级',
+                      onTap: () =>
+                          _openAdvancedBindStudentModal(targetAccount: acc),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1973,7 +2011,12 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
       children: [
         // Stage Toolbar with 2px Accent Underline Tabs
         Container(
-          padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+          padding: EdgeInsets.fromLTRB(
+            isDesktop ? 20 : 12,
+            6,
+            isDesktop ? 20 : 12,
+            0,
+          ),
           decoration: const BoxDecoration(
             color: Taste.surface,
             border: Border(bottom: BorderSide(color: Taste.border)),
@@ -1985,17 +2028,17 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                   child: Row(
                     children: [
                       _buildStageUnderlineTab(0, '成绩单与单科卷面'),
-                      const SizedBox(width: 24),
+                      SizedBox(width: isDesktop ? 24 : 16),
                       _buildStageUnderlineTab(1, '全账号与全体学生总览'),
-                      const SizedBox(width: 24),
+                      SizedBox(width: isDesktop ? 24 : 16),
                       _buildStageUnderlineTab(2, '错题本与原始诊断'),
                     ],
                   ),
                 ),
               ),
-              if (_inspectingPaper != null && _inspectorCollapsed)
+              if (isDesktop && _inspectingPaper != null && _inspectorCollapsed)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.only(bottom: 6, left: 8),
                   child: _miniIconBtn(
                     label: '展开答题卡栏',
                     active: true,
@@ -2190,58 +2233,63 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                       runSpacing: 8,
                       children: [
                         if (exams.isNotEmpty)
-                          SizedBox(
-                            width: 240,
-                            height: 32,
-                            child: DropdownButtonFormField<String>(
-                              key: ValueKey(
-                                'top_exam_sel_${curExam?.examId ?? exams.first.examId}',
-                              ),
-                              initialValue: curExam?.examId ?? exams.first.examId,
-                              isExpanded: true,
-                              isDense: true,
-                              decoration: InputDecoration(
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 4),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(
-                                      Taste.radiusControl),
+                          ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: isDesktop ? 250 : 225,
+                            ),
+                            child: SizedBox(
+                              height: 32,
+                              child: DropdownButtonFormField<String>(
+                                key: ValueKey(
+                                  'top_exam_sel_${curExam?.examId ?? exams.first.examId}',
                                 ),
-                              ),
-                              items: [
-                                for (final ex in exams)
-                                  DropdownMenuItem(
-                                    value: ex.examId,
-                                    child: Text(
-                                      '${formatDateMs(ex.time)} · ${ex.name} (${ex.scoreS}分)',
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
+                                initialValue:
+                                    curExam?.examId ?? exams.first.examId,
+                                isExpanded: true,
+                                isDense: true,
+                                decoration: InputDecoration(
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 4),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(
+                                        Taste.radiusControl),
                                   ),
-                              ],
-                              onChanged: (val) {
-                                if (val != null) {
-                                  setState(() {
-                                    _selectedExamId = val;
-                                    final ex = exams.firstWhere(
-                                      (e) => e.examId == val,
-                                      orElse: () => exams.first,
-                                    );
-                                    _inspectingExam = ex;
-                                    if (ex.papers.isNotEmpty) {
-                                      final prevSubj =
-                                          _inspectingPaper?.subject ?? '';
-                                      _inspectingPaper = ex.papers.firstWhere(
-                                        (p) =>
-                                            prevSubj.isNotEmpty &&
-                                            p.subject == prevSubj,
-                                        orElse: () => ex.papers.first,
+                                ),
+                                items: [
+                                  for (final ex in exams)
+                                    DropdownMenuItem(
+                                      value: ex.examId,
+                                      child: Text(
+                                        '${formatDateMs(ex.time)} · ${ex.name} (${ex.scoreS}分)',
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    ),
+                                ],
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    setState(() {
+                                      _selectedExamId = val;
+                                      final ex = exams.firstWhere(
+                                        (e) => e.examId == val,
+                                        orElse: () => exams.first,
                                       );
-                                      _inspectorCollapsed = false;
-                                    }
-                                  });
-                                }
-                              },
+                                      _inspectingExam = ex;
+                                      if (ex.papers.isNotEmpty) {
+                                        final prevSubj =
+                                            _inspectingPaper?.subject ?? '';
+                                        _inspectingPaper = ex.papers.firstWhere(
+                                          (p) =>
+                                              prevSubj.isNotEmpty &&
+                                              p.subject == prevSubj,
+                                          orElse: () => ex.papers.first,
+                                        );
+                                        _inspectorCollapsed = false;
+                                      }
+                                    });
+                                  }
+                                },
+                              ),
                             ),
                           ),
                         _buildTopBarBtn(
@@ -2291,8 +2339,10 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                   spacing: 12,
                   runSpacing: 8,
                   children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         const Text(
                           '历次考试总分与单科矩阵',
@@ -2302,9 +2352,10 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                             color: Taste.text,
                           ),
                         ),
-                        const SizedBox(width: 10),
                         Text(
-                          '点击任意单科分数立即在右侧调阅高清答题卡',
+                          isDesktop
+                              ? '点击任意单科分数立即在右侧调阅高清答题卡'
+                              : '点击任意单科分数立即调阅高清答题卡（可左右滑动表格）',
                           style: const TextStyle(
                             fontSize: 12,
                             color: Taste.muted,
@@ -2383,7 +2434,12 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                 )
               else
                 const Divider(height: 1, color: Taste.border),
-              _buildScoreMatrixTable(filteredExams, visibleSubjects, curExam),
+              _buildScoreMatrixTable(
+                filteredExams,
+                visibleSubjects,
+                curExam,
+                isDesktop: isDesktop,
+              ),
             ],
           ),
         ),
@@ -2530,9 +2586,24 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
     if (!isDesktop) {
       return Column(
         children: [
-          for (var i = 0; i < cells.length; i++) ...[
-            if (i > 0) const Divider(height: 1, color: Taste.border),
-            cells[i],
+          for (var r = 0; r < cells.length; r += 2) ...[
+            if (r > 0) const Divider(height: 1, color: Taste.border),
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: cells[r]),
+                  if (r + 1 < cells.length) ...[
+                    const VerticalDivider(
+                      width: 1,
+                      thickness: 1,
+                      color: Taste.border,
+                    ),
+                    Expanded(child: cells[r + 1]),
+                  ],
+                ],
+              ),
+            ),
           ],
         ],
       );
@@ -2625,8 +2696,9 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
   Widget _buildScoreMatrixTable(
     List<ExamRecord> exams,
     List<String> subjects,
-    ExamRecord? selectedExam,
-  ) {
+    ExamRecord? selectedExam, {
+    required bool isDesktop,
+  }) {
     if (exams.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(24),
@@ -2636,20 +2708,31 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
       );
     }
 
+    final double dateColW = isDesktop ? 112 : 84;
+    final double nameColW = isDesktop ? 210 : 126;
+    final double totalColW = isDesktop ? 148 : 88;
+    final double subjColW = isDesktop ? 136 : 92;
+    final double wrongColW = isDesktop ? 84 : 62;
+    final double minTableW = dateColW +
+        nameColW +
+        totalColW +
+        subjects.length * subjColW +
+        wrongColW;
+
     return IsolatedHorizontalScroll(
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          minWidth: math.max(780, 460.0 + subjects.length * 136.0),
+          minWidth: math.max(isDesktop ? 780 : 320, minTableW),
         ),
         child: Table(
           defaultVerticalAlignment: TableCellVerticalAlignment.middle,
           columnWidths: <int, TableColumnWidth>{
-            0: const FixedColumnWidth(112), // 日期
-            1: const FixedColumnWidth(210), // 考试名称
-            2: const FixedColumnWidth(148), // 总分
+            0: FixedColumnWidth(dateColW), // 日期
+            1: FixedColumnWidth(nameColW), // 考试名称
+            2: FixedColumnWidth(totalColW), // 总分
             for (var i = 0; i < subjects.length; i++)
-              i + 3: const FixedColumnWidth(136),
-            subjects.length + 3: const FixedColumnWidth(84), // 错题数
+              i + 3: FixedColumnWidth(subjColW),
+            subjects.length + 3: FixedColumnWidth(wrongColW), // 错题数
           },
           border: const TableBorder(
             horizontalInside: BorderSide(color: Taste.rule),
@@ -2662,12 +2745,25 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                 border: Border(bottom: BorderSide(color: Taste.border)),
               ),
               children: [
-                _matrixHeaderCell('日期'),
-                _matrixHeaderCell('考试名称'),
-                _matrixHeaderCell('总分', alignRight: true, rightBorder: true),
+                _matrixHeaderCell('日期', compact: !isDesktop),
+                _matrixHeaderCell('考试名称', compact: !isDesktop),
+                _matrixHeaderCell(
+                  '总分',
+                  alignRight: true,
+                  rightBorder: true,
+                  compact: !isDesktop,
+                ),
                 for (final subj in subjects)
-                  _matrixHeaderCell(subj, alignRight: true),
-                _matrixHeaderCell('错题', alignRight: true),
+                  _matrixHeaderCell(
+                    subj,
+                    alignRight: true,
+                    compact: !isDesktop,
+                  ),
+                _matrixHeaderCell(
+                  '错题',
+                  alignRight: true,
+                  compact: !isDesktop,
+                ),
               ],
             ),
             // Data Rows
@@ -2677,6 +2773,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                 rIdx + 1 < exams.length ? exams[rIdx + 1] : null,
                 subjects,
                 isSelectedExam: exams[rIdx].examId == selectedExam?.examId,
+                compact: !isDesktop,
               ),
           ],
         ),
@@ -2688,10 +2785,11 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
     String text, {
     bool alignRight = false,
     bool rightBorder = false,
+    bool compact = false,
   }) {
     return Container(
       height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
       decoration: rightBorder
           ? const BoxDecoration(
@@ -2733,6 +2831,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
     ExamRecord? olderExam,
     List<String> subjects, {
     required bool isSelectedExam,
+    bool compact = false,
   }) {
     final paperBySubj = <String, PaperScore>{};
     for (final p in exam.papers) {
@@ -2765,11 +2864,12 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
           onTap: () => _selectExamRow(exam),
           child: Container(
             height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
             alignment: Alignment.centerLeft,
             child: Text(
               formatDateMs(exam.time),
-              style: Taste.numStyle(size: 12, color: Taste.muted),
+              style: Taste.numStyle(
+                  size: compact ? 11 : 12, color: Taste.muted),
             ),
           ),
         ),
@@ -2778,14 +2878,14 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
           onTap: () => _selectExamRow(exam),
           child: Container(
             height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
             alignment: Alignment.centerLeft,
             child: Text(
               exam.name,
-              maxLines: 1,
+              maxLines: compact ? 2 : 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 13,
+              style: TextStyle(
+                fontSize: compact ? 12 : 13,
                 fontWeight: FontWeight.w500,
                 color: Taste.text,
               ),
@@ -2795,7 +2895,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         // Total score cell
         Container(
           height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 10),
           alignment: Alignment.centerRight,
           decoration: const BoxDecoration(
             border: Border(right: BorderSide(color: Taste.border)),
@@ -2838,7 +2938,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         for (final subj in subjects)
           Container(
             height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            padding: EdgeInsets.symmetric(horizontal: compact ? 5 : 8),
             alignment: Alignment.centerRight,
             child: paperBySubj[subj] == null
                 ? Container(
@@ -2858,7 +2958,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         // Wrong count cell
         Container(
           height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
           alignment: Alignment.centerRight,
           child: Text(
             exam.totalWrong > 0 ? '${exam.totalWrong}题' : '—',
@@ -3083,7 +3183,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
   /// Tab 1: Fleet & All-Students Overview Stage (1:1 parity with #tab-fleet)
   Widget _buildFleetOverviewStage() {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(14),
       children: [
         // 1. All-Students Score Comparison Table
         Container(
@@ -3125,6 +3225,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                     ),
                     Wrap(
                       spacing: 8,
+                      runSpacing: 6,
                       children: [
                         _buildTopBarBtn(
                           label: _loadingFleet ? '正在遍历全员…' : '一键遍历同步全员成绩',
@@ -3196,8 +3297,11 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 12,
+                  runSpacing: 8,
                   children: [
                     Text(
                       '已连接好分数账号池（共 ${_accounts.length} 个账号）',
@@ -3209,6 +3313,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                     ),
                     Wrap(
                       spacing: 8,
+                      runSpacing: 6,
                       children: [
                         _buildTopBarBtn(
                           label: '导出凭证文件 (.json)',
@@ -3228,16 +3333,22 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
               const Divider(height: 1, color: Taste.border),
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    for (final acc in _accounts)
-                      SizedBox(
-                        width: 320,
-                        child: _buildFleetAccountCard(acc),
-                      ),
-                  ],
+                child: LayoutBuilder(
+                  builder: (ctx, box) {
+                    final cols = (box.maxWidth / 300).floor().clamp(1, 4);
+                    final cardW = (box.maxWidth - (cols - 1) * 12) / cols;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        for (final acc in _accounts)
+                          SizedBox(
+                            width: cardW,
+                            child: _buildFleetAccountCard(acc),
+                          ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ],
@@ -4063,29 +4174,26 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
             spacing: 6,
             runSpacing: 6,
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
+              Wrap(
+                spacing: 4,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   _toolBtn(
-                    '‹ 上一张 (←)',
+                    '‹ 上一张',
                     onTap: () => _switchPageIndex(
                       (safePageIdx - 1 + data.answerPages.length) %
                           data.answerPages.length,
                     ),
                   ),
-                  const SizedBox(width: 6),
                   for (var pIdx = 0; pIdx < data.answerPages.length; pIdx++)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 4),
-                      child: _toolBtn(
-                        '第${pIdx + 1}页',
-                        active: safePageIdx == pIdx,
-                        onTap: () => _switchPageIndex(pIdx),
-                      ),
+                    _toolBtn(
+                      '第${pIdx + 1}页',
+                      active: safePageIdx == pIdx,
+                      onTap: () => _switchPageIndex(pIdx),
                     ),
-                  const SizedBox(width: 2),
                   _toolBtn(
-                    '下一张 (→) ›',
+                    '下一张 ›',
                     onTap: () => _switchPageIndex(
                       (safePageIdx + 1) % data.answerPages.length,
                     ),
@@ -4121,8 +4229,11 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                   color: Taste.surface,
                   border: Border(bottom: BorderSide(color: Taste.border)),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  runSpacing: 6,
                   children: [
                     Text(
                       '答题卡 第 ${i + 1} / ${data.answerPages.length} 页',
@@ -4134,6 +4245,7 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                     ),
                     Wrap(
                       spacing: 4,
+                      runSpacing: 4,
                       children: [
                         _toolBtn(
                           '复制图片',

@@ -159,8 +159,9 @@ void main() {
       'hfs_dash_snap_v2:acc_test_1:stu_1': jsonEncode(mockDash),
     });
 
-    // 1. Mobile phone viewport (390 x 844)
-    tester.view.physicalSize = const Size(390, 844);
+    // 1. Narrow mobile phone viewport (320 x 740) & standard phone (360 x 800):
+    //    exercise all 4 tabs and modals to verify zero RenderFlex overflow or off-screen clipping.
+    tester.view.physicalSize = const Size(320, 740);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -171,10 +172,58 @@ void main() {
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.text('多号与学生'), findsOneWidget);
 
+    // Switch to mobile tab 1 (全员总览)
+    await tester.tap(find.text('全员总览'));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.text('全员学生最新考试成绩对照表'), findsOneWidget);
+
+    // Switch to mobile tab 2 (错题与诊断)
+    await tester.tap(find.text('错题与诊断'));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.textContaining('错题本深度复盘'), findsOneWidget);
+
     // Switch to mobile tab 3 (多号与学生)
     await tester.tap(find.text('多号与学生'));
     await tester.pump(const Duration(milliseconds: 250));
     expect(find.text('好分数账号与绑定学生'), findsOneWidget);
+
+    // Open Settings modal on 320px screen
+    await tester.tap(find.text('设置'));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.text('工作台设置与好分数上游只读诊断'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pump(const Duration(milliseconds: 250));
+
+    // Switch back to mobile tab 0 (成绩单) at 360x800
+    tester.view.physicalSize = const Size(360, 800);
+    await tester.tap(find.text('成绩单'));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.text('总分 历次成绩变化趋势折线图与学科均衡度'), findsOneWidget);
+
+    // Scroll down to verify the score matrix table renders without overflow
+    final verticalScrollable = find.byWidgetPredicate(
+      (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+    );
+    await tester.scrollUntilVisible(
+      find.text('历次考试总分与单科矩阵'),
+      250.0,
+      scrollable: verticalScrollable.first,
+    );
+    expect(find.text('历次考试总分与单科矩阵'), findsOneWidget);
+
+    // Scroll down to the subject paper cards and open mobile bottom-sheet PaperInspectionPane
+    await tester.scrollUntilVisible(
+      find.textContaining('已出分科目：2 科'),
+      180.0,
+      scrollable: verticalScrollable.first,
+    );
+    await tester.drag(find.byType(ListView).first, const Offset(0, -180));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('调阅答题卡 →').first);
+    await tester.pumpAndSettle();
+    expect(find.text('语文 · 试卷与答题卡调阅'), findsOneWidget);
+    await tester.tap(find.text('收起'));
+    await tester.pumpAndSettle();
 
     // 2. Desktop computer viewport (1440 x 900)
     tester.view.physicalSize = const Size(1440, 900);
