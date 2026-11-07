@@ -632,6 +632,17 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
     }
   }
 
+  Future<void> _openMiniScoresModal() async {
+    final acc = _currentAccount;
+    if (acc == null || acc.wechatSessionCookie.trim().isEmpty) {
+      setState(() => _errorBanner = '当前账号不是微信小程序会话，无法使用小程序代理读取');
+      return;
+    }
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => MiniScoresDialog(client: _client, account: acc),
+    );
+  }
   void _openAuthOrRegisterModal({HfsAccount? reauthAccount}) {
     showDialog<void>(
       context: context,
@@ -1347,6 +1358,13 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
             onTap: () => _openAuthOrRegisterModal(),
           ),
           const SizedBox(width: 5),
+          if (isDesktop)
+            _buildTopBarBtn(
+              label: '微信侧成绩',
+              icon: Icons.fact_check_outlined,
+              onTap: _openMiniScoresModal,
+            ),
+          const SizedBox(width: 5),
           _buildTopBarBtn(
             label: isDesktop ? '刷新当前' : '刷新',
             icon: Icons.refresh,
@@ -1522,6 +1540,13 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                           ? null
                           : () => _loadDashboardForCurrent(allowCache: false),
                     ),
+                    if (curAcc?.wechatSessionCookie.trim().isNotEmpty == true)
+                      _miniIconBtn(
+                        label: '微信成绩',
+                        onTap: _openMiniScoresModal,
+                      ),
+                    if (curAcc?.wechatSessionCookie.trim().isNotEmpty == true)
+                      const SizedBox(width: 4),
                     _miniIconBtn(
                       label: '注册/登录',
                       active: true,

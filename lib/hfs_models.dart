@@ -364,6 +364,48 @@ class MiniRegisterResult {
   bool get isOk => code == 0;
 }
 
+class MiniScorePaper {
+  final String subject;
+  final String score;
+  final double manfen;
+
+  const MiniScorePaper({
+    required this.subject,
+    required this.score,
+    required this.manfen,
+  });
+}
+
+class MiniScoreExam {
+  final String examId;
+  final String name;
+  final String score;
+  final double manfen;
+  final String classRank;
+  final String gradeRank;
+  final List<MiniScorePaper> papers;
+
+  const MiniScoreExam({
+    required this.examId,
+    required this.name,
+    required this.score,
+    required this.manfen,
+    required this.classRank,
+    required this.gradeRank,
+    required this.papers,
+  });
+}
+
+class MiniScoreReport {
+  final Map<String, dynamic> student;
+  final List<MiniScoreExam> exams;
+
+  const MiniScoreReport({
+    required this.student,
+    required this.exams,
+  });
+}
+
 class HfsAccount {
   final String id;
   String label;

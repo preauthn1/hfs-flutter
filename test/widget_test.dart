@@ -51,6 +51,13 @@ void main() {
       returnsNormally,
     );
   });
+  test('WeChat proxy URI stays on the official host', () {
+    expect(
+      HfsUpstreamClient.miniProxyUri('/v3/exam/list?start=0').toString(),
+      'https://hfs-wechat-be.yunxiao.com/v1/be-proxy/v3/exam/list?start=0',
+    );
+  });
+
   test('Dynamic quota formula min(6, count(-1) + 3) and changeBindTime lock', () {
     final futureLock = DateTime.now()
         .add(const Duration(days: 120))

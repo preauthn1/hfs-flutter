@@ -35,6 +35,15 @@ class HfsUpstreamClient {
   static const String kHfsWechatBaseUrl =
       'https://hfs-wechat-be.yunxiao.com';
 
+  /// Build the official mini-program proxy URI used by the WeChat client for
+  /// App-side `/v1/be-proxy/v2/*` and `/v1/be-proxy/v3/*` calls.
+  static Uri miniProxyUri(String path) {
+    final normalized = path.startsWith('/') ? path : '/$path';
+    final uri = Uri.parse('$kHfsWechatBaseUrl/v1/be-proxy$normalized');
+    assertAllowedHost(uri);
+    return uri;
+  }
+
   static final RegExp _cropMetaRe = RegExp(
     r'@c_[^?]*,x_(\d+),y_(\d+),w_(\d+),h_(\d+)',
     caseSensitive: false,
@@ -142,6 +151,59 @@ class HfsUpstreamClient {
     return (body: body, cookies: fresh);
   }
 
+  Future<({Map<String, dynamic> body, List<String> cookies})> _miniRequestUri(
+    Uri base, {
+    String method = 'GET',
+    Map<String, dynamic>? query,
+    Map<String, dynamic>? jsonBody,
+    String? cookie,
+  }) async {
+    assertAllowedHost(base);
+    final uri = query == null
+        ? base
+        : base.replace(
+            queryParameters: <String, String>{
+              ...base.queryParameters,
+              for (final e in query.entries)
+                if (e.value != null) e.key: e.value.toString(),
+            },
+          );
+    final headers = _miniHeaders(cookie: cookie, json: jsonBody != null);
+    final payload = jsonBody == null ? null : jsonEncode(jsonBody);
+    late http.Response resp;
+    switch (method.toUpperCase()) {
+      case 'POST':
+        resp = await _http
+            .post(uri, headers: headers, body: payload)
+            .timeout(const Duration(seconds: 20));
+        break;
+      case 'PUT':
+        resp = await _http
+            .put(uri, headers: headers, body: payload)
+            .timeout(const Duration(seconds: 20));
+        break;
+      default:
+        resp = await _http
+            .get(uri, headers: headers)
+            .timeout(const Duration(seconds: 20));
+    }
+    final body = _decodeJsonMap(resp.bodyBytes);
+    final fresh = <String>[];
+    for (final c in _parseAllSetCookies(resp.headers)) {
+      if (c.startsWith('hfs-wechat-be-session-id=')) fresh.add(c);
+    }
+    final code = intOf(body['code'], -1);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw Exception(
+          '好分数微信接口 HTTP ${resp.statusCode}: ${strOf(body['msg'], '请求失败')}');
+    }
+    if (code != 0) {
+      final detail = strOf(body['errStack']);
+      throw Exception(
+          '好分数微信接口 ${strOf(body['msg'], '请求失败')} (code=$code)${detail.isEmpty ? '' : ' · $detail'}');
+    }
+    return (body: body, cookies: fresh);
+  }
   List<String> _parseAllSetCookies(Map<String, String> headers) {
     final out = <String>[];
     for (final entry in headers.entries) {
@@ -262,7 +324,102 @@ class HfsUpstreamClient {
     return out;
   }
 
-  /// WeChat mini-program: discover accounts associated with a phone/WeChat identity.
+  /// Read-only proxy request used by the mini-program for score resources.
+  Future<Map<String, dynamic>> miniProxyGetForAccount(
+    HfsAccount account,
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    final cookie = account.wechatSessionCookie.trim();
+    if (cookie.isEmpty) {
+      throw ArgumentError('该账号没有可用的微信侧会话');
+    }
+    final res = await _miniRequestUri(
+      miniProxyUri(path),
+      query: query,
+      cookie: cookie,
+    );
+    return res.body;
+  }
+
+  Future<List<Map<String, dynamic>>> miniProxyExamList(
+    HfsAccount account, {
+    int start = 0,
+  }) async {
+    final body = await miniProxyGetForAccount(
+      account,
+      '/v3/exam/list',
+      query: <String, dynamic>{'start': start},
+    );
+    final data = body['data'];
+    final raw = data is Map && data['list'] is List
+        ? data['list'] as List
+        : (data is List ? data : const <dynamic>[]);
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> miniProxyUserSnapshot(HfsAccount account) {
+    return miniProxyGetForAccount(account, '/v2/user-center/user-snapshot');
+  }
+
+  Future<MiniScoreReport> miniProxyScores(
+    HfsAccount account, {
+    int limit = 3,
+  }) async {
+    final exams = await miniProxyExamList(account);
+    final snapshot = exams.isEmpty
+        ? const <String, dynamic>{}
+        : await miniProxyUserSnapshot(account);
+    final snapshotData = snapshot['data'];
+    final student = snapshotData is Map && snapshotData['linkedStudent'] is Map
+        ? Map<String, dynamic>.from(snapshotData['linkedStudent'] as Map)
+        : const <String, dynamic>{};
+    final records = <MiniScoreExam>[];
+    for (final raw in exams.take(limit.clamp(1, 30))) {
+      final examId = strOf(raw['examId'], strOf(raw['id']));
+      if (examId.isEmpty) continue;
+      final overview = await miniProxyGetForAccount(
+        account,
+        '/v3/exam/$examId/overview',
+      );
+      final brief = await miniProxyGetForAccount(
+        account,
+        '/v3/exam/$examId/brief',
+      );
+      final ov = overview['data'] is Map
+          ? Map<String, dynamic>.from(overview['data'] as Map)
+          : const <String, dynamic>{};
+      final br = brief['data'] is Map
+          ? Map<String, dynamic>.from(brief['data'] as Map)
+          : const <String, dynamic>{};
+      final rawPapers = br['papers'] is List ? br['papers'] as List : const [];
+      final papers = rawPapers.whereType<Map>().map((paper) {
+        final p = Map<String, dynamic>.from(paper);
+        return MiniScorePaper(
+          subject: strOf(p['subject'], strOf(p['name'], '科目')),
+          score: strOf(p['scoreS'], strOf(p['score'], '0')),
+          manfen: numOf(p['manfen']),
+        );
+      }).toList();
+      records.add(
+        MiniScoreExam(
+          examId: examId,
+          name: strOf(ov['name'], strOf(br['name'], strOf(raw['name'], '考试'))),
+          score: strOf(ov['scoreS'], strOf(ov['score'], '0')),
+          manfen: numOf(ov['manfen'] ?? br['manfen']),
+          classRank: strOf(ov['classRank']),
+          gradeRank: strOf(ov['gradeRank']),
+          papers: papers,
+        ),
+      );
+    }
+    return MiniScoreReport(student: student, exams: records);
+  }
+
+
   /// The `code` is deliberately sent as supplied; the upstream contract only
   /// requires that the parameter exists. This UI never probes an unknown phone.
   Future<MiniRelatedUsersResult> miniAccountRelatedUsers({

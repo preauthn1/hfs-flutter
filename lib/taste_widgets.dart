@@ -136,6 +136,124 @@ class TastePill extends StatelessWidget {
   }
 }
 
+/// Read-only score view through the official WeChat mini-program proxy.
+class MiniScoresDialog extends StatefulWidget {
+  final HfsUpstreamClient client;
+  final HfsAccount account;
+
+  const MiniScoresDialog({
+    super.key,
+    required this.client,
+    required this.account,
+  });
+
+  @override
+  State<MiniScoresDialog> createState() => _MiniScoresDialogState();
+}
+
+class _MiniScoresDialogState extends State<MiniScoresDialog> {
+  MiniScoreReport? _report;
+  String? _error;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final report = await widget.client.miniProxyScores(widget.account);
+      if (!mounted) return;
+      setState(() {
+        _report = report;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Taste.surface,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 620, maxHeight: 700),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_error!, style: const TextStyle(color: Taste.negative)),
+                        const SizedBox(height: 12),
+                        OutlinedButton(onPressed: _load, child: const Text('重试')),
+                      ],
+                    )
+                  : _buildReport(_report!),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReport(MiniScoreReport report) {
+    final studentLabel = strOf(report.student['studentName'], '当前学生');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '微信侧成绩读取 · $studentLabel',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+            ),
+            IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close, size: 18),
+            ),
+          ],
+        ),
+        const Divider(height: 16),
+        Expanded(
+          child: report.exams.isEmpty
+              ? const Center(child: Text('该学生没有考试记录'))
+              : ListView.separated(
+                  itemCount: report.exams.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, index) {
+                    final exam = report.exams[index];
+                    return ExpansionTile(
+                      title: Text(exam.name),
+                      subtitle: Text(
+                        '总分 ${exam.score}/${exam.manfen} · 班排 ${exam.classRank.isEmpty ? '—' : exam.classRank} · 年级排 ${exam.gradeRank.isEmpty ? '—' : exam.gradeRank}',
+                      ),
+                      children: [
+                        for (final paper in exam.papers)
+                          ListTile(
+                            dense: true,
+                            title: Text(paper.subject),
+                            trailing: Text('${paper.score}/${paper.manfen}'),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+}
 /// Unified Auth / Register / Forgot-Password Panel (works standalone or inside a dialog)
 class HfsAuthPanel extends StatefulWidget {
   final HfsUpstreamClient client;
