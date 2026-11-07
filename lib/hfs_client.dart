@@ -25,11 +25,15 @@ class SmsSendOutcome {
 
 class HfsUpstreamClient {
   /// Strictly connects ONLY to official Haofenshu upstream hosts:
-  /// - API: https://hfs-be.yunxiao.com
+  /// - App API: https://hfs-be.yunxiao.com
+  /// - WeChat mini-program API: https://hfs-wechat-be.yunxiao.com
   /// - OSS exam images: https://yj-oss.yunxiao.com
   static const String kHfsApiHost = 'hfs-be.yunxiao.com';
+  static const String kHfsWechatHost = 'hfs-wechat-be.yunxiao.com';
   static const String kHfsOssHost = 'yj-oss.yunxiao.com';
   static const String kHfsBaseUrl = 'https://hfs-be.yunxiao.com';
+  static const String kHfsWechatBaseUrl =
+      'https://hfs-wechat-be.yunxiao.com';
 
   static final RegExp _cropMetaRe = RegExp(
     r'@c_[^?]*,x_(\d+),y_(\d+),w_(\d+),h_(\d+)',
@@ -54,9 +58,100 @@ class HfsUpstreamClient {
 
   static void assertAllowedHost(Uri uri) {
     if (uri.scheme != 'https' ||
-        (uri.host != kHfsApiHost && uri.host != kHfsOssHost)) {
-      throw StateError('安全策略拦截：仅允许连接好分数官方后端 ($kHfsApiHost / $kHfsOssHost)');
+        (uri.host != kHfsApiHost &&
+            uri.host != kHfsWechatHost &&
+            uri.host != kHfsOssHost)) {
+      throw StateError(
+          '安全策略拦截：仅允许连接好分数官方后端 ($kHfsApiHost / $kHfsWechatHost / $kHfsOssHost)');
     }
+  }
+
+  Map<String, String> _miniHeaders({
+    String? cookie,
+    bool json = false,
+  }) {
+    final headers = <String, String>{
+      'deviceType': '7',
+      'Accept': 'application/json',
+      'User-Agent':
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) WeChat/8.0',
+    };
+    if (json) {
+      headers['Content-Type'] = 'application/json; charset=UTF-8';
+    }
+    if (cookie != null && cookie.trim().isNotEmpty) {
+      // The mini-program intentionally sends this as lower-case `cookie`,
+      // which is distinct from the App API's `Cookie: hfs-session-id=...`.
+      headers['cookie'] = cookie.trim();
+    }
+    return headers;
+  }
+
+  Future<({Map<String, dynamic> body, List<String> cookies})> _miniRequest(
+    String path, {
+    String method = 'GET',
+    Map<String, dynamic>? query,
+    Map<String, dynamic>? jsonBody,
+    String? cookie,
+  }) async {
+    final base = Uri.parse('$kHfsWechatBaseUrl$path');
+    assertAllowedHost(base);
+    final uri = query == null
+        ? base
+        : base.replace(
+            queryParameters: <String, String>{
+              ...base.queryParameters,
+              for (final e in query.entries)
+                if (e.value != null) e.key: e.value.toString(),
+            },
+          );
+    final headers = _miniHeaders(cookie: cookie, json: jsonBody != null);
+    final payload = jsonBody == null ? null : jsonEncode(jsonBody);
+    late http.Response resp;
+    switch (method.toUpperCase()) {
+      case 'POST':
+        resp = await _http
+            .post(uri, headers: headers, body: payload)
+            .timeout(const Duration(seconds: 20));
+        break;
+      case 'PUT':
+        resp = await _http
+            .put(uri, headers: headers, body: payload)
+            .timeout(const Duration(seconds: 20));
+        break;
+      default:
+        resp = await _http
+            .get(uri, headers: headers)
+            .timeout(const Duration(seconds: 20));
+    }
+    final body = _decodeJsonMap(resp.bodyBytes);
+    final fresh = <String>[];
+    for (final c in _parseAllSetCookies(resp.headers)) {
+      if (c.startsWith('hfs-wechat-be-session-id=')) fresh.add(c);
+    }
+    final code = intOf(body['code'], -1);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw Exception(
+          '好分数微信接口 HTTP ${resp.statusCode}: ${strOf(body['msg'], '请求失败')}');
+    }
+    if (code != 0) {
+      final detail = strOf(body['errStack']);
+      throw Exception(
+          '好分数微信接口 ${strOf(body['msg'], '请求失败')} (code=$code)${detail.isEmpty ? '' : ' · $detail'}');
+    }
+    return (body: body, cookies: fresh);
+  }
+
+  List<String> _parseAllSetCookies(Map<String, String> headers) {
+    final out = <String>[];
+    for (final entry in headers.entries) {
+      if (entry.key.toLowerCase() != 'set-cookie') continue;
+      for (final part in entry.value.split(_setCookieSplitRe)) {
+        final pair = part.split(';').first.trim();
+        if (pair.isNotEmpty) out.add(pair);
+      }
+    }
+    return out;
   }
 
   static String accountIdFor(String loginName, int roleType) {
@@ -147,6 +242,198 @@ class HfsUpstreamClient {
       }
     } catch (_) {}
     return <String, dynamic>{};
+  }
+
+  List<String> _miniSessionCookies({
+    required String jwt,
+    required List<String> setCookies,
+  }) {
+    final value = jwt.trim();
+    final out = <String>[];
+    for (final c in setCookies) {
+      if (c.startsWith('hfs-wechat-be-session-id=')) {
+        out.add(c);
+      }
+    }
+    if (value.isNotEmpty &&
+        !out.any((c) => c.startsWith('hfs-wechat-be-session-id='))) {
+      out.add('hfs-wechat-be-session-id=$value');
+    }
+    return out;
+  }
+
+  /// WeChat mini-program: discover accounts associated with a phone/WeChat identity.
+  /// The `code` is deliberately sent as supplied; the upstream contract only
+  /// requires that the parameter exists. This UI never probes an unknown phone.
+  Future<MiniRelatedUsersResult> miniAccountRelatedUsers({
+    required String code,
+    String phone = '',
+    String gzhAppId = '',
+    String gzhOpenId = '',
+    String accessToken = '',
+  }) async {
+    if (code.trim().isEmpty) {
+      throw ArgumentError('微信登录 code 不能为空');
+    }
+    final res = await _miniRequest(
+      '/v2/mini/account-related-user',
+      query: <String, dynamic>{
+        'code': code,
+        if (phone.trim().isNotEmpty) 'phone': phone.trim(),
+        if (gzhAppId.trim().isNotEmpty) 'gzhAppId': gzhAppId.trim(),
+        if (gzhOpenId.trim().isNotEmpty) 'gzhOpenId': gzhOpenId.trim(),
+        if (accessToken.trim().isNotEmpty) 'accessToken': accessToken.trim(),
+      },
+    );
+    final data = res.body['data'] is Map
+        ? Map<String, dynamic>.from(res.body['data'] as Map)
+        : const <String, dynamic>{};
+    final users = data['users'] is List
+        ? (data['users'] as List)
+            .whereType<Map>()
+            .map((m) => MiniRelatedUser.fromJson(
+                  Map<String, dynamic>.from(m),
+                ))
+            .where((u) => u.userId.isNotEmpty)
+            .toList()
+        : <MiniRelatedUser>[];
+    return MiniRelatedUsersResult(
+      unionId: strOf(data['unionId']),
+      users: users,
+    );
+  }
+
+  /// WeChat mini-program passwordless account-login exchange.
+  /// `key` and `unionId` are passed literally; no normalization or guessing.
+  Future<MiniLoginResult> miniAccountLogin({
+    required MiniRelatedUser user,
+    required String key,
+    required String unionId,
+  }) async {
+    if (user.userId.trim().isEmpty) {
+      throw ArgumentError('微信账号 userId 不能为空');
+    }
+    final res = await _miniRequest(
+      '/v2/mini/account-login',
+      method: 'POST',
+      jsonBody: <String, dynamic>{
+        'userId': user.userId,
+        'roleType': user.roleType,
+        'key': key,
+        'unionId': unionId,
+      },
+    );
+    final data = res.body['data'] is Map
+        ? Map<String, dynamic>.from(res.body['data'] as Map)
+        : const <String, dynamic>{};
+    final jwt = strOf(data['cookie']);
+    final cookies = _miniSessionCookies(jwt: jwt, setCookies: res.cookies);
+    return MiniLoginResult(
+      userId: strOf(data['userId'], user.userId),
+      unionId: strOf(data['unionId'], unionId),
+      roleType: intOf(data['roleType'], user.roleType),
+      studentId: strOf(data['studentId']),
+      schoolId: intOf(data['schoolId']),
+      jwt: jwt,
+      key: user.key,
+      cookies: cookies,
+      wechatCookie: cookies.isNotEmpty ? cookies.first : '',
+    );
+  }
+
+  /// Read the App-side roster using the JWT returned by mini account-login.
+  /// This deliberately returns the same domain model as regular App login.
+  Future<List<StudentInfo>> miniReadRelatedStudents(MiniLoginResult session) async {
+    final cookieValue = session.jwt.trim();
+    if (cookieValue.isEmpty) throw Exception('微信免密登录未返回会话 JWT');
+    final uri = Uri.parse('$kHfsBaseUrl/v2/user-center/related-students');
+    assertAllowedHost(uri);
+    final headers = _roleHeaders(session.roleType, cookies: <String>[
+      'hfs-session-id=$cookieValue',
+    ]);
+    final resp = await _http
+        .get(uri, headers: headers)
+        .timeout(const Duration(seconds: 20));
+    final body = _decodeJsonMap(resp.bodyBytes);
+    if (intOf(body['code'], -1) != 0 || body['data'] is! List) {
+      throw Exception(strOf(body['msg'], '微信免密会话读取学生名单失败'));
+    }
+    return (body['data'] as List)
+        .whereType<Map>()
+        .map((m) => StudentInfo.fromUpstream(Map<String, dynamic>.from(m)))
+        .toList();
+  }
+
+  /// WeChat mini-program registration. `vcode` is a real SMS code and is
+  /// intentionally not auto-filled or bypassed.
+  Future<MiniRegisterResult> miniAccountRegister({
+    required String phone,
+    required String unionId,
+    required int roleType,
+    required String password,
+    required String vcode,
+    String invitationCode = '',
+  }) async {
+    final res = await _miniRequest(
+      '/v2/mini/account-register',
+      method: 'POST',
+      jsonBody: <String, dynamic>{
+        'phone': phone.trim(),
+        'unionId': unionId,
+        'roleType': roleType,
+        'password': password,
+        'vcode': vcode.trim(),
+        'invitationCode': invitationCode.trim(),
+      },
+    );
+    final data = res.body['data'] is Map
+        ? Map<String, dynamic>.from(res.body['data'] as Map)
+        : const <String, dynamic>{};
+    return MiniRegisterResult(
+      code: intOf(res.body['code']),
+      message: strOf(res.body['msg'], '注册完成'),
+      data: data,
+      cookies: res.cookies,
+    );
+  }
+
+  Future<void> miniAccountLogout({required String wechatCookie}) async {
+    if (wechatCookie.trim().isEmpty) {
+      throw ArgumentError('微信会话 cookie 不能为空');
+    }
+    await _miniRequest(
+      '/v2/mini/account-logout',
+      method: 'POST',
+      cookie: wechatCookie,
+    );
+  }
+
+  /// Exchange a mini-program session into the regular account model so all
+  /// existing dashboard, roster and rebind UI can operate on it.
+  Future<HfsAccount> miniLoginAsAccount({
+    required MiniLoginResult session,
+    String label = '',
+  }) async {
+    // `_miniRelated` is deliberately not persisted; the wx.login code and
+    // account discovery response are short-lived and must be reacquired.
+    // Only the exchanged session cookie is persisted in HfsAccount.
+    final account = HfsAccount(
+      id: accountIdFor(session.userId, session.roleType),
+      label: label,
+      roleType: session.roleType,
+      loginName: '',
+      password: '',
+      cookies: <String>['hfs-session-id=${session.jwt}'],
+      students: <StudentInfo>[],
+      activeStudentId: session.studentId,
+      desiredStudentId: session.studentId,
+      wechatSessionCookie: session.wechatCookie,
+      wechatUnionId: session.unionId,
+      wechatUserId: session.userId,
+      wechatKey: session.key,
+    );
+    await hydrateAccountStudents(account);
+    return account;
   }
 
   Future<List<String>> loginHfs({

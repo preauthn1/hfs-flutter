@@ -286,6 +286,84 @@ class StudentInfo {
       };
 }
 
+/// An account exposed by the WeChat mini-program's account discovery endpoint.
+/// `key` is intentionally kept as a string because the upstream has returned
+/// both a JSON number and a string for it across deployments.
+class MiniRelatedUser {
+  final String userId;
+  final int roleType;
+  final String phone;
+  final String key;
+
+  const MiniRelatedUser({
+    required this.userId,
+    required this.roleType,
+    required this.phone,
+    required this.key,
+  });
+
+  factory MiniRelatedUser.fromJson(Map<String, dynamic> m) {
+    return MiniRelatedUser(
+      userId: strOf(m['userId']),
+      roleType: intOf(m['type'], intOf(m['roleType'], 2)),
+      phone: strOf(m['phone']),
+      key: strOf(m['key']),
+    );
+  }
+
+  String get roleLabel => roleType == 1 ? '学生端' : '家长端';
+}
+
+class MiniRelatedUsersResult {
+  final String unionId;
+  final List<MiniRelatedUser> users;
+
+  const MiniRelatedUsersResult({
+    required this.unionId,
+    required this.users,
+  });
+}
+
+class MiniLoginResult {
+  final String userId;
+  final String unionId;
+  final int roleType;
+  final String studentId;
+  final int schoolId;
+  final String jwt;
+  final String key;
+  final List<String> cookies;
+  final String wechatCookie;
+
+  const MiniLoginResult({
+    required this.userId,
+    required this.unionId,
+    required this.roleType,
+    required this.studentId,
+    required this.schoolId,
+    required this.jwt,
+    required this.key,
+    required this.cookies,
+    required this.wechatCookie,
+  });
+}
+
+class MiniRegisterResult {
+  final int code;
+  final String message;
+  final Map<String, dynamic> data;
+  final List<String> cookies;
+
+  const MiniRegisterResult({
+    required this.code,
+    required this.message,
+    required this.data,
+    required this.cookies,
+  });
+
+  bool get isOk => code == 0;
+}
+
 class HfsAccount {
   final String id;
   String label;
@@ -297,6 +375,13 @@ class HfsAccount {
   String activeStudentId;
   String desiredStudentId;
   Map<String, StudentSnapshot> studentSnapshots;
+  /// Non-empty only for accounts created through the WeChat mini-program
+  /// session exchange. It is kept so an explicit local removal can also log
+  /// out the mini-program session upstream.
+  String wechatSessionCookie;
+  String wechatUnionId;
+  String wechatUserId;
+  String wechatKey;
   String state;
   int lastRefreshAt;
 
@@ -311,6 +396,10 @@ class HfsAccount {
     this.activeStudentId = '',
     this.desiredStudentId = '',
     Map<String, StudentSnapshot>? studentSnapshots,
+    this.wechatSessionCookie = '',
+    this.wechatUnionId = '',
+    this.wechatUserId = '',
+    this.wechatKey = '',
     this.state = 'connected',
     this.lastRefreshAt = 0,
   }) : studentSnapshots = studentSnapshots ?? <String, StudentSnapshot>{};
@@ -354,6 +443,10 @@ class HfsAccount {
         'students': students.map((e) => e.toJson()).toList(),
         'activeStudentId': activeStudentId,
         'desiredStudentId': desiredStudentId,
+        'wechatSessionCookie': wechatSessionCookie,
+        'wechatUnionId': wechatUnionId,
+        'wechatUserId': wechatUserId,
+        'wechatKey': wechatKey,
         'studentSnapshots':
             studentSnapshots.map((k, v) => MapEntry(k, v.toJson())),
         'state': state,
@@ -386,6 +479,10 @@ class HfsAccount {
       desiredStudentId: strOf(m['desiredStudentId']).isNotEmpty
           ? strOf(m['desiredStudentId'])
           : strOf(m['activeStudentId']),
+      wechatSessionCookie: strOf(m['wechatSessionCookie']),
+      wechatUnionId: strOf(m['wechatUnionId']),
+      wechatUserId: strOf(m['wechatUserId']),
+      wechatKey: strOf(m['wechatKey']),
       studentSnapshots: snaps,
       state: strOf(m['state'], 'connected'),
       lastRefreshAt: intOf(m['lastRefreshAt']),

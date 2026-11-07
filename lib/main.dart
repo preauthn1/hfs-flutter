@@ -651,6 +651,10 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
               if (ctx.mounted) Navigator.of(ctx).pop();
               await _handleUpsertAuthenticatedAccount(acc);
             },
+            onMiniAuthenticated: (acc) async {
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              await _handleUpsertAuthenticatedAccount(acc);
+            },
           ),
         ),
       ),
@@ -934,6 +938,15 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
   }
 
   Future<void> _removeAccount(HfsAccount acc) async {
+    if (acc.wechatSessionCookie.isNotEmpty) {
+      try {
+        await _client.miniAccountLogout(
+          wechatCookie: acc.wechatSessionCookie,
+        );
+      } catch (_) {
+        // Local removal remains available when the upstream session already expired.
+      }
+    }
     _accounts.removeWhere((a) => a.id == acc.id);
     if (_selectedAccountId == acc.id) {
       _selectedAccountId = _accounts.isNotEmpty ? _accounts.first.id : '';
@@ -973,6 +986,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
               child: HfsAuthPanel(
                 client: _client,
                 onAuthenticated: _handleUpsertAuthenticatedAccount,
+                onMiniAuthenticated: _handleUpsertAuthenticatedAccount,
               ),
             ),
           ),

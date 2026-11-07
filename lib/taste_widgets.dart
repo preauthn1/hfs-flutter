@@ -142,6 +142,7 @@ class HfsAuthPanel extends StatefulWidget {
   final HfsAccount? reauthAccount;
   final bool isDialog;
   final Future<void> Function(HfsAccount account) onAuthenticated;
+  final Future<void> Function(HfsAccount account)? onMiniAuthenticated;
 
   const HfsAuthPanel({
     super.key,
@@ -149,6 +150,7 @@ class HfsAuthPanel extends StatefulWidget {
     required this.onAuthenticated,
     this.reauthAccount,
     this.isDialog = false,
+    this.onMiniAuthenticated,
   });
 
   @override
@@ -156,7 +158,7 @@ class HfsAuthPanel extends StatefulWidget {
 }
 
 class _HfsAuthPanelState extends State<HfsAuthPanel> {
-  // 0 = 登录已有账号, 1 = 注册新好分数账号, 2 = 短信找回密码
+  // 0 = 登录已有账号, 1 = 注册新账号, 2 = 短信找回密码, 3 = 小程序免密登录, 4 = 小程序注册
   int _mode = 0;
   int _roleType = 2; // 2 = 家长端, 1 = 学生端
 
@@ -166,6 +168,13 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
   final TextEditingController _smsCodeCtrl = TextEditingController();
   final TextEditingController _captchaCtrl = TextEditingController();
   final TextEditingController _inviteCtrl = TextEditingController();
+  final TextEditingController _miniCodeCtrl = TextEditingController();
+  final TextEditingController _miniInvitationCtrl = TextEditingController();
+
+  String? _selectedMiniUserId;
+  MiniRelatedUsersResult? _miniRelated;
+  bool _miniDiscovering = false;
+  bool _miniLoggingIn = false;
 
   String? _captchaSvg;
   bool _busy = false;
@@ -196,6 +205,8 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
     _smsCodeCtrl.dispose();
     _captchaCtrl.dispose();
     _inviteCtrl.dispose();
+    _miniCodeCtrl.dispose();
+    _miniInvitationCtrl.dispose();
     super.dispose();
   }
 
@@ -243,6 +254,10 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
   }
 
   Future<void> _handleSendSms() async {
+    if (_mode == 4) {
+      setState(() => _errorText = '微信侧注册短信验证码请在小程序中获取后填入');
+      return;
+    }
     final phone = _phoneCtrl.text.trim();
     if (!_phoneRe.hasMatch(phone)) {
       setState(() => _errorText = '请输入有效的 11 位手机号码');
@@ -361,7 +376,7 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
         );
       }
 
-      final id = widget.reauthAccount?.id ??
+    final id = widget.reauthAccount?.id ??
           HfsUpstreamClient.accountIdFor(login, _roleType);
       final acc = HfsAccount(
         id: id,
@@ -382,6 +397,138 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
       if (!mounted) return;
       setState(() {
         _busy = false;
+        _errorText = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Future<void> _discoverMiniAccounts() async {
+    final phone = _phoneCtrl.text.trim();
+    final code = _miniCodeCtrl.text.trim();
+    if (!_phoneRe.hasMatch(phone)) {
+      setState(() => _errorText = '请输入需要在微信小程序侧关联的 11 位手机号');
+      return;
+    }
+    if (code.isEmpty) {
+      setState(() => _errorText = '请输入你自己的 wx.login() code');
+      return;
+    }
+    setState(() {
+      _miniDiscovering = true;
+      _errorText = null;
+      _infoText = null;
+    });
+    try {
+      final result = await widget.client.miniAccountRelatedUsers(
+        code: code,
+        phone: phone,
+      );
+      if (!mounted) return;
+      setState(() {
+        _miniRelated = result;
+        _selectedMiniUserId = result.users.isNotEmpty
+            ? result.users.first.userId
+            : null;
+        _miniDiscovering = false;
+        _infoText = result.users.isEmpty
+            ? '该微信/手机号没有关联的好分数账号'
+            : '已找到 ${result.users.length} 个关联账号，请选择后换取会话';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _miniDiscovering = false;
+        _errorText = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Future<void> _handleMiniRegister() async {
+    final phone = _phoneCtrl.text.trim();
+    final password = _passCtrl.text;
+    final unionId = _inviteCtrl.text.trim();
+    final vcode = _smsCodeCtrl.text.trim();
+    if (!_phoneRe.hasMatch(phone)) {
+      setState(() => _errorText = '请输入有效的 11 位手机号码');
+      return;
+    }
+    if (unionId.isEmpty || vcode.isEmpty || password.isEmpty) {
+      setState(() => _errorText = '请填写 unionId、密码与真实短信验证码');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _errorText = null;
+      _infoText = null;
+    });
+    try {
+      final result = await widget.client.miniAccountRegister(
+        phone: phone,
+        unionId: unionId,
+        roleType: _roleType,
+        password: password,
+        vcode: vcode,
+        invitationCode: _miniInvitationCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _infoText = result.isOk
+            ? '微信小程序账号注册成功，请切换到「微信小程序免密」并重新查询关联账号后登录'
+            : result.message;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _errorText = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Future<void> _handleMiniLogin() async {
+    if (_miniRelated == null || _miniRelated!.users.isEmpty) {
+      await _discoverMiniAccounts();
+      if (!mounted || _miniRelated == null || _miniRelated!.users.isEmpty) {
+        return;
+      }
+    }
+    final unionId = _inviteCtrl.text.trim();
+    if (unionId.isEmpty) {
+      setState(() => _errorText = '请输入微信 unionId（小程序 wx.login 结果提供）');
+      return;
+    }
+    final user = _miniRelated!.users.firstWhere(
+      (u) => u.userId == _selectedMiniUserId,
+      orElse: () => _miniRelated!.users.first,
+    );
+    setState(() {
+      _busy = true;
+      _miniLoggingIn = true;
+      _errorText = null;
+      _infoText = null;
+    });
+    try {
+      final miniSession = await widget.client.miniAccountLogin(
+        user: user,
+        key: user.key,
+        unionId: unionId,
+      );
+      final acc = await widget.client.miniLoginAsAccount(
+        session: miniSession,
+        label: _labelCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      if (widget.onMiniAuthenticated != null) {
+        await widget.onMiniAuthenticated!(acc);
+      } else {
+        await widget.onAuthenticated(acc);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _miniLoggingIn = false;
         _errorText = e.toString().replaceFirst('Exception: ', '');
       });
     }
@@ -493,11 +640,15 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
                 borderRadius: BorderRadius.circular(Taste.radiusControl),
                 border: Border.all(color: Taste.border),
               ),
-              child: Row(
+              child: Wrap(
+                spacing: 4,
+                runSpacing: 4,
                 children: [
                   _buildModeTab(0, '登录已有账号'),
                   _buildModeTab(1, '注册新账号'),
                   _buildModeTab(2, '找回密码'),
+                  _buildModeTab(3, '微信免密'),
+                  _buildModeTab(4, '微信注册'),
                 ],
               ),
             ),
@@ -537,76 +688,222 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
           ),
           const SizedBox(height: 12),
           _buildLabeledInput(
-            label: _mode == 0 ? '手机号 / 好分数账号 / 学号' : '11 位手机号码',
+            label: _mode == 0
+                ? '手机号 / 好分数账号 / 学号'
+                : ((_mode == 3 || _mode == 4) ? '关联手机号' : '11 位手机号码'),
             controller: _phoneCtrl,
-            hint: _mode == 0 ? '输入手机号或学生端账号' : '请输入未注册的 11 位手机号',
+            hint: _mode == 0
+                ? '输入手机号或学生端账号'
+                : ((_mode == 3 || _mode == 4)
+                    ? '仅填写你自己的手机号'
+                    : '请输入未注册的 11 位手机号'),
           ),
-          if (_mode == 1 || _mode == 2) ...[
-            if (_captchaSvg != null) ...[
+          if (_mode == 3) ...[
+            _buildLabeledInput(
+              label: '微信 wx.login() code',
+              controller: _miniCodeCtrl,
+              hint: '从你自己的微信小程序 wx.login() 获取',
+            ),
+            const SizedBox(height: 10),
+            _buildLabeledInput(
+              label: '微信 unionId',
+              controller: _inviteCtrl,
+              hint: '从你自己的小程序会话/服务端获取',
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: Taste.pillWarnBg,
+                borderRadius: BorderRadius.circular(Taste.radiusControl),
+              ),
+              child: const Text(
+                '此模式只连接你自己的微信身份，并将 account-related-user 返回的账号列表展示在本地；Flutter 无法自行调用 wx.login()。不会猜测 code、unionId，也不会对第三方手机号发起查询。',
+                style: TextStyle(fontSize: 11.5, color: Taste.pillWarnInk),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (_miniRelated != null && _miniRelated!.users.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: Taste.raised,
+                  borderRadius: BorderRadius.circular(Taste.radiusControl),
+                  border: Border.all(color: Taste.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      '微信关联账号（仅显示脱敏手机号与角色）',
+                      style: TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 5),
+                    for (final u in _miniRelated!.users)
+                      InkWell(
+                        onTap: _busy
+                            ? null
+                            : () => setState(
+                                  () => _selectedMiniUserId = u.userId,
+                                ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _selectedMiniUserId == u.userId
+                                    ? Icons.radio_button_checked
+                                    : Icons.radio_button_unchecked,
+                                size: 19,
+                                color: _selectedMiniUserId == u.userId
+                                    ? Taste.accent
+                                    : Taste.muted,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '${u.roleLabel} · ${maskLoginName(u.phone)}',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: (_miniDiscovering || _busy)
+                      ? null
+                      : _discoverMiniAccounts,
+                  icon: _miniDiscovering
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 1.6),
+                        )
+                      : const Icon(Icons.search, size: 15),
+                  label: Text(
+                    _miniDiscovering ? '查询中…' : '查询微信关联账号',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                if (_miniLoggingIn)
+                  const Text(
+                    '正在换取会话…',
+                    style: TextStyle(fontSize: 12, color: Taste.muted),
+                  ),
+              ],
+            ),
+          ] else if (_mode == 4) ...[
+            _buildLabeledInput(
+              label: '微信 unionId',
+              controller: _inviteCtrl,
+              hint: '从你自己的小程序会话/服务端获取',
+            ),
+            const SizedBox(height: 10),
+            _buildLabeledInput(
+              label: '真实短信验证码',
+              controller: _smsCodeCtrl,
+              hint: '服务端会校验，不能绕过',
+            ),
+            const SizedBox(height: 10),
+            _buildLabeledInput(
+              label: '设置密码',
+              controller: _passCtrl,
+              hint: '输入新账号密码',
+              obscure: true,
+            ),
+            const SizedBox(height: 8),
+            _buildLabeledInput(
+              label: '邀请码（选填）',
+              controller: _miniInvitationCtrl,
+              hint: '可留空',
+            ),
+            const Text(
+              '微信侧注册不会绕过短信验证码；邀请码为可选项。',
+              style: TextStyle(fontSize: 11.5, color: Taste.muted),
+            ),
+          ] else ...[
+            if (_mode == 1 || _mode == 2) ...[
+              if (_captchaSvg != null) ...[
+                const SizedBox(height: 10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: _buildLabeledInput(
+                        label: '图形验证码（点击右侧图片可刷新）',
+                        controller: _captchaCtrl,
+                        hint: '输入图中字符',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SvgCaptchaView(
+                      svgXml: _captchaSvg!,
+                      width: 124,
+                      height: 38,
+                      onTapRefresh: _refreshCaptcha,
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 10),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Expanded(
                     child: _buildLabeledInput(
-                      label: '图形验证码（点击右侧图片可刷新）',
-                      controller: _captchaCtrl,
-                      hint: '输入图中字符',
+                      label: '短信验证码',
+                      controller: _smsCodeCtrl,
+                      hint: '6 位短信验证码',
                     ),
                   ),
                   const SizedBox(width: 8),
-                  SvgCaptchaView(
-                    svgXml: _captchaSvg!,
-                    width: 124,
+                  SizedBox(
                     height: 38,
-                    onTapRefresh: _refreshCaptcha,
+                    child: OutlinedButton(
+                      onPressed: (_sendingSms || _smsCountdown > 0 || _busy)
+                          ? null
+                          : _handleSendSms,
+                      child: Text(
+                        _sendingSms
+                            ? '发送中…'
+                            : (_smsCountdown > 0
+                                ? '重发 (${_smsCountdown}s)'
+                                : '获取验证码'),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
                   ),
                 ],
               ),
             ],
-            const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: _buildLabeledInput(
-                    label: '短信验证码',
-                    controller: _smsCodeCtrl,
-                    hint: '6 位短信验证码',
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 38,
-                  child: OutlinedButton(
-                    onPressed: (_sendingSms || _smsCountdown > 0 || _busy)
-                        ? null
-                        : _handleSendSms,
-                    child: Text(
-                      _sendingSms
-                          ? '发送中…'
-                          : (_smsCountdown > 0
-                              ? '重发 (${_smsCountdown}s)'
-                              : '获取验证码'),
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ],
           const SizedBox(height: 10),
-          _buildLabeledInput(
-            label: _mode == 0
-                ? '登录密码'
-                : '设置密码（8~20位，建议含字母+数字+符号）',
-            controller: _passCtrl,
-            hint: _mode == 0 ? '输入好分数密码' : '如：Abc12345!',
-            obscure: true,
-            onSubmitted: (_) => _handleSubmit(),
-          ),
-          const SizedBox(height: 10),
-          Row(
+          if (_mode != 3 && _mode != 4)
+            _buildLabeledInput(
+              label: _mode == 0
+                  ? '登录密码'
+                  : '设置密码（8~20位，建议含字母+数字+符号）',
+              controller: _passCtrl,
+              hint: _mode == 0 ? '输入好分数密码' : '如：Abc12345!',
+              obscure: true,
+              onSubmitted: (_) => _handleSubmit(),
+            ),
+          if (_mode == 4)
+            const SizedBox.shrink(),
+          if (_mode != 3 && _mode != 4)
+            const SizedBox(height: 10),
+          if (_mode != 3 && _mode != 4)
+            Row(
             children: [
               Expanded(
                 child: _buildLabeledInput(
@@ -672,13 +969,23 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
                   borderRadius: BorderRadius.circular(Taste.radiusControl),
                 ),
               ),
-              onPressed: _busy ? null : _handleSubmit,
+              onPressed: _busy
+                  ? null
+                  : (_mode == 3
+                      ? _handleMiniLogin
+                      : (_mode == 4 ? _handleMiniRegister : _handleSubmit)),
               child: Text(
                 _busy
                     ? '正在与好分数服务器通信…'
                     : (_mode == 0
                         ? (isReauth ? '更新凭据并重连' : '直连登录并挂载账号')
-                        : (_mode == 1 ? '立即注册并挂载账号' : '重置密码并登录')),
+                        : (_mode == 1
+                            ? '立即注册并挂载账号'
+                            : (_mode == 2
+                                ? '重置密码并登录'
+                                : (_mode == 3
+                                    ? '微信免密登录并挂载'
+                                    : '微信注册')))),
                 style: const TextStyle(
                   fontFamily: Taste.fontFamily,
                   fontSize: 14,
@@ -695,7 +1002,8 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
 
   Widget _buildModeTab(int index, String title) {
     final active = _mode == index;
-    return Expanded(
+    return SizedBox(
+      width: 92,
       child: InkWell(
         onTap: _busy
             ? null

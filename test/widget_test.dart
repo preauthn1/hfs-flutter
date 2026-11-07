@@ -34,6 +34,23 @@ void main() {
     );
   });
 
+  test('WeChat mini-program models preserve role and key literally', () {
+    final user = MiniRelatedUser.fromJson({
+      'userId': 'mini_user_fixture',
+      'type': 2,
+      'phone': '13800000000',
+      'key': 1794074360930,
+    });
+    expect(user.roleType, 2);
+    expect(user.key, '1794074360930');
+    expect(user.roleLabel, '家长端');
+    expect(
+      () => HfsUpstreamClient.assertAllowedHost(
+        Uri.parse('https://hfs-wechat-be.yunxiao.com/v2/mini/account-login'),
+      ),
+      returnsNormally,
+    );
+  });
   test('Dynamic quota formula min(6, count(-1) + 3) and changeBindTime lock', () {
     final futureLock = DateTime.now()
         .add(const Duration(days: 120))
