@@ -149,8 +149,8 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v2.4.0' }}
-          name: 好分数原生工作台 ${{ github.ref_type == 'tag' && github.ref_name || 'v2.4.0' }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v2.5.0' }}
+          name: 好分数原生工作台 ${{ github.ref_type == 'tag' && github.ref_name || 'v2.5.0' }}
           body: |
             好分数原生 Flutter 客户端（手机 + 电脑全端适配，100% 直连好分数官方后端 `hfs-be.yunxiao.com` / `yj-oss.yunxiao.com`）。
             - **Windows 电脑端安装程序 (`Inno Setup x64`)**: `hfs_flutter_windows_x64_setup.exe`（双击直接安装并创建桌面快捷方式）

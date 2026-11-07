@@ -786,11 +786,13 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
   }
 }
 
-/// Multi-Channel Student Binding Dialog (Supports Account Picker + 4 Binding Channels)
+/// Multi-Channel Student Binding & Rebinding Dialog
+/// Supports Account Picker + Quota/Slot Inspector + Add (`PUT`/`POST`) or Rebind (`PATCH /v2/native-users/bind-student`) + 4 Channels
 class BindStudentAdvancedDialog extends StatefulWidget {
   final HfsUpstreamClient client;
   final List<HfsAccount> accounts;
   final HfsAccount initialAccount;
+  final String? initialReplaceStudentId;
   final Future<void> Function(HfsAccount targetAccount, DashboardData dash)
       onBound;
 
@@ -799,6 +801,7 @@ class BindStudentAdvancedDialog extends StatefulWidget {
     required this.client,
     required this.accounts,
     required this.initialAccount,
+    this.initialReplaceStudentId,
     required this.onBound,
   });
 
@@ -809,7 +812,10 @@ class BindStudentAdvancedDialog extends StatefulWidget {
 
 class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
   late HfsAccount _targetAccount;
-  // 0 = 姓名+学号/考号, 1 = 按学校+年级+姓名查询绑定, 2 = 按学生端账号密码绑定, 3 = 按内部 studentId 直绑
+  // '' = 新增绑定模式; non-empty studentId = 换绑替换模式 (`PATCH /v2/native-users/bind-student` selectStudentId)
+  String _replaceStudentId = '';
+  bool _refreshingQuota = false;
+  // 0 = 姓名+学号/考号, 1 = 按学校+年级+姓名查询绑定, 2 = 按学生端账号密码绑定, 3 = 同班名册 + studentId 直绑/换绑
   int _channel = 0;
 
   final TextEditingController _nameCtrl = TextEditingController();
@@ -831,7 +837,7 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
   bool _submitting = false;
   String? _error;
 
-  // Channel 3: Combined `GET /v2/students/classmates` + `POST /v2/native-users/bind-students`
+  // Channel 3: Combined `GET /v2/students/classmates` + `POST /v2/native-users/bind-students` / `PATCH /v2/native-users/bind-student`
   HfsAccount? _rosterSourceAcc;
   StudentInfo? _rosterSourceStu;
   List<ClassmateBindEntry> _classmates = const [];
@@ -843,6 +849,7 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
   void initState() {
     super.initState();
     _targetAccount = widget.initialAccount;
+    _replaceStudentId = widget.initialReplaceStudentId?.trim() ?? '';
     final all = _allBoundStudents();
     if (all.isNotEmpty) {
       final curMatch = all.where(
@@ -855,6 +862,27 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
       _rosterSourceStu = chosen.stu;
     } else {
       _rosterSourceAcc = widget.initialAccount;
+    }
+    _refreshTargetAccountQuota();
+  }
+
+  Future<void> _refreshTargetAccountQuota() async {
+    if (_refreshingQuota) return;
+    setState(() => _refreshingQuota = true);
+    try {
+      await widget.client.hydrateAccountStudents(_targetAccount);
+      if (!mounted) return;
+      setState(() {
+        _refreshingQuota = false;
+        if (_replaceStudentId.isNotEmpty &&
+            !_targetAccount.students
+                .any((s) => s.studentId == _replaceStudentId)) {
+          _replaceStudentId = '';
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _refreshingQuota = false);
     }
   }
 
@@ -989,7 +1017,169 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
     }
   }
 
-  Future<void> _submitBind({String? directStudentId}) async {
+  StudentInfo? get _selectedReplaceStudent {
+    if (_replaceStudentId.isEmpty) return null;
+    for (final s in _targetAccount.students) {
+      if (s.studentId == _replaceStudentId) return s;
+    }
+    return null;
+  }
+
+  Future<bool?> _confirmRebindSafety({
+    required StudentInfo sourceStu,
+    String? targetName,
+    bool? knownTargetHasStudentAccount,
+  }) async {
+    bool forceAllowStuAcc = false;
+    final needsStuAccWarn = knownTargetHasStudentAccount == true;
+    final needsMinusOneWarn = sourceStu.isMinusOneSlot;
+    if (!needsStuAccWarn && !needsMinusOneWarn) {
+      return false; // Proceed without needing forceAllowStudentAccountTarget
+    }
+
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => AlertDialog(
+          backgroundColor: Taste.surface,
+          title: Row(
+            children: [
+              Icon(
+                needsStuAccWarn
+                    ? Icons.warning_amber_rounded
+                    : Icons.swap_horiz_rounded,
+                color: needsStuAccWarn ? Taste.negative : Taste.warning,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  needsStuAccWarn
+                      ? '高危换绑风控拦截 (4137 删源风险)'
+                      : '确认消耗 -1 活名额进行换绑？',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '源学生（将被移除）：${sourceStu.studentName} (${sourceStu.changeBindStatusLabel})\n'
+                '目标新学生：${targetName ?? "所选目标学生"}\n'
+                '挂载账号：${_targetAccount.displayLabel}',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: Taste.text,
+                ),
+              ),
+              const SizedBox(height: 10),
+              if (needsMinusOneWarn)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Taste.pillWarnBg,
+                    borderRadius: BorderRadius.circular(Taste.radiusControl),
+                  ),
+                  child: Text(
+                    '• 「${sourceStu.studentName}」属于 changeBindTime == -1 的历史活名额（随时可换）。\n'
+                    '• 一旦换绑为新学生，新记录将一律写入 +180 天学期锁，本账号的 -1 活名额将从 ${_targetAccount.minusOneSlotCount} 个减为 ${math.max(0, _targetAccount.minusOneSlotCount - 1)} 个，账号总容量上限将从 ${_targetAccount.estimatedMaxQuota} 人永久降为 ${math.max(3, _targetAccount.estimatedMaxQuota - 1)} 人。',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Taste.pillWarnInk,
+                    ),
+                  ),
+                ),
+              if (needsStuAccWarn) ...[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Taste.pillNegBg,
+                    borderRadius: BorderRadius.circular(Taste.radiusControl),
+                  ),
+                  child: const Text(
+                    '• 严重警告：检测到目标同学已激活学生端账号 (bindStudent 非空)！\n'
+                    '• 好分数上游 PATCH /v2/native-users/bind-student 存在非原子写缺陷：当目标带有学生端账号时，服务端会返回 4137 Duplicate links，但会把源学生直接删除、目标学生却未加入（导致白白丢失一名已绑学生）！\n'
+                    '• 强烈建议取消本次换绑，改选无学生端账号的目标或使用新增直绑。',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Taste.pillNegInk,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  value: forceAllowStuAcc,
+                  onChanged: (v) =>
+                      setModalState(() => forceAllowStuAcc = v ?? false),
+                  title: const Text(
+                    '我已知晓 4137 删源不加目标风险，仍强制发送换绑请求',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Taste.negative,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(null),
+              child: const Text('取消换绑'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor:
+                    needsStuAccWarn ? Taste.negative : Taste.primary,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: (needsStuAccWarn && !forceAllowStuAcc)
+                  ? null
+                  : () => Navigator.of(ctx).pop(forceAllowStuAcc),
+              child: const Text('确认执行换绑'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submitBind({
+    String? directStudentId,
+    bool? knownTargetHasStudentAccount,
+    String? targetStudentName,
+  }) async {
+    final replaceStu = _selectedReplaceStudent;
+    bool forceAllowStuAcc = false;
+
+    if (replaceStu != null) {
+      if (replaceStu.isSemesterLocked) {
+        setState(() {
+          _error =
+              '源学生「${replaceStu.studentName}」处于学期锁定期（${replaceStu.changeBindStatusLabel}），每学期只能换绑一次 (4137)，请更换其他可换绑槽位。';
+        });
+        return;
+      }
+      final confirmed = await _confirmRebindSafety(
+        sourceStu: replaceStu,
+        targetName: targetStudentName ?? directStudentId,
+        knownTargetHasStudentAccount: knownTargetHasStudentAccount,
+      );
+      if (confirmed == null) return; // User cancelled
+      forceAllowStuAcc = confirmed;
+    }
+
     setState(() {
       _submitting = true;
       _error = null;
@@ -997,10 +1187,21 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
     try {
       late DashboardData dash;
       if (directStudentId != null && directStudentId.isNotEmpty) {
-        dash = await widget.client.bindStudentById(
-          account: _targetAccount,
-          studentId: directStudentId,
-        );
+        if (replaceStu != null) {
+          dash = await widget.client.rebindStudent(
+            account: _targetAccount,
+            selectStudentId: replaceStu.studentId,
+            targetStudentId: directStudentId,
+            schoolAuthCode: _authCtrl.text.trim(),
+            knownTargetHasStudentAccount: knownTargetHasStudentAccount,
+            forceAllowStudentAccountTarget: forceAllowStuAcc,
+          );
+        } else {
+          dash = await widget.client.bindStudentById(
+            account: _targetAccount,
+            studentId: directStudentId,
+          );
+        }
       } else if (_channel == 0) {
         if (_nameCtrl.text.trim().isEmpty || _codeCtrl.text.trim().isEmpty) {
           throw Exception('请填写学生姓名与学号/准考证号');
@@ -1010,6 +1211,7 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
           studentName: _nameCtrl.text.trim(),
           identityCode: _codeCtrl.text.trim(),
           schoolAuthCode: _authCtrl.text.trim(),
+          replaceStudentId: replaceStu?.studentId ?? '',
         );
       } else if (_channel == 2) {
         if (_stuAccCtrl.text.trim().isEmpty || _stuPwdCtrl.text.isEmpty) {
@@ -1019,17 +1221,40 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
           account: _targetAccount,
           studentAccount: _stuAccCtrl.text.trim(),
           studentPassword: _stuPwdCtrl.text,
+          chooseStudentId: replaceStu?.studentId ?? '',
         );
       } else if (_channel == 3) {
-        if (_stuIdCtrl.text.trim().isEmpty) {
-          throw Exception('请填写内部 studentId');
+        final rawId = _stuIdCtrl.text.trim();
+        if (rawId.isEmpty) {
+          throw Exception('请填写或从下方同班名册点选内部 studentId');
         }
-        dash = await widget.client.bindStudentById(
-          account: _targetAccount,
-          studentId: _stuIdCtrl.text.trim(),
-        );
+        // Check if this ID is in loaded classmates to know `hasStudentAccount`
+        bool? knownHasStu = knownTargetHasStudentAccount;
+        if (knownHasStu == null) {
+          for (final c in _classmates) {
+            if (c.id == rawId) {
+              knownHasStu = c.hasStudentAccount;
+              break;
+            }
+          }
+        }
+        if (replaceStu != null) {
+          dash = await widget.client.rebindStudent(
+            account: _targetAccount,
+            selectStudentId: replaceStu.studentId,
+            targetStudentId: rawId,
+            schoolAuthCode: _authCtrl.text.trim(),
+            knownTargetHasStudentAccount: knownHasStu,
+            forceAllowStudentAccountTarget: forceAllowStuAcc,
+          );
+        } else {
+          dash = await widget.client.bindStudentById(
+            account: _targetAccount,
+            studentId: rawId,
+          );
+        }
       } else {
-        throw Exception('请先点击“查询同名学生”，然后点击对应学生的“立即绑定”');
+        throw Exception('请先点击“查询学生”，然后点击对应学生的绑定/换绑按钮');
       }
 
       if (!mounted) return;
@@ -1057,6 +1282,9 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
       }
     }
 
+    final replaceStu = _selectedReplaceStudent;
+    final isRebindMode = replaceStu != null;
+
     return Dialog(
       backgroundColor: Taste.surface,
       insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
@@ -1064,7 +1292,7 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
         borderRadius: BorderRadius.circular(Taste.radiusCard),
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 680),
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 740),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -1073,10 +1301,12 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
             children: [
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      '多通道绑定学生（零换绑安全模式）',
-                      style: TextStyle(
+                      isRebindMode
+                          ? '换绑学生（替换「${replaceStu.studentName}」· PATCH bind-student）'
+                          : '多通道绑定与换绑学生',
+                      style: const TextStyle(
                         fontFamily: Taste.fontFamily,
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -1097,13 +1327,14 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
               Row(
                 children: [
                   const Text(
-                    '挂载到账号：',
+                    '目标账号：',
                     style: TextStyle(fontSize: 12, color: Taste.muted),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      key: ValueKey('bind_acc_${_targetAccount.id}'),
+                      key: ValueKey(
+                          'bind_acc_${_targetAccount.id}_${_targetAccount.students.length}'),
                       initialValue: _targetAccount.id,
                       isExpanded: true,
                       isDense: true,
@@ -1120,7 +1351,7 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                           DropdownMenuItem(
                             value: a.id,
                             child: Text(
-                              '${a.displayLabel} (${a.roleType == 1 ? "学生端" : "家长端"} · 已绑${a.students.length}人)',
+                              '${a.displayLabel} (${a.roleType == 1 ? "学生端" : "家长端"} · 已绑${a.students.length}/${a.estimatedMaxQuota}人)',
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 12),
                             ),
@@ -1132,13 +1363,148 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                               if (val == null) return;
                               final found = widget.accounts
                                   .firstWhere((a) => a.id == val);
-                              setState(() => _targetAccount = found);
+                              setState(() {
+                                _targetAccount = found;
+                                _replaceStudentId = '';
+                                _error = null;
+                              });
+                              _refreshTargetAccountQuota();
                             },
                     ),
                   ),
+                  const SizedBox(width: 6),
+                  IconButton(
+                    tooltip: '实时刷新该账号关联学生与换绑锁状态 (GET /v2/user-center/related-students)',
+                    visualDensity: VisualDensity.compact,
+                    onPressed:
+                        _refreshingQuota ? null : _refreshTargetAccountQuota,
+                    icon: _refreshingQuota
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 1.8),
+                          )
+                        : const Icon(Icons.refresh, size: 16),
+                  ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
+              // Quota & Add vs Rebind Slot Selector Box
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: isRebindMode ? Taste.pillWarnBg : Taste.raised,
+                  borderRadius: BorderRadius.circular(Taste.radiusControl),
+                  border: Border.all(
+                    color: isRebindMode
+                        ? const Color(0xFFFDE68A)
+                        : Taste.border,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        TastePill(
+                          label:
+                              '已绑 ${_targetAccount.students.length} / 上限 ${_targetAccount.estimatedMaxQuota} 人',
+                          tone: _targetAccount.isQuotaFull
+                              ? TastePillTone.warning
+                              : TastePillTone.positive,
+                        ),
+                        TastePill(
+                          label:
+                              '-1活名额: ${_targetAccount.minusOneSlotCount} 个',
+                          tone: _targetAccount.minusOneSlotCount > 0
+                              ? TastePillTone.blue
+                              : TastePillTone.neutral,
+                        ),
+                        TastePill(
+                          label: _targetAccount.isQuotaFull
+                              ? '新增配额已满(4010/4025)，请选下方槽位换绑'
+                              : '可新增 ${_targetAccount.remainingAddQuota} 人',
+                          tone: _targetAccount.isQuotaFull
+                              ? TastePillTone.warning
+                              : TastePillTone.positive,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '选择绑定模式（新增绑定 或 点击已有学生进行换绑 PATCH /v2/native-users/bind-student）：',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: Taste.text,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        ChoiceChip(
+                          visualDensity: VisualDensity.compact,
+                          selected: _replaceStudentId.isEmpty,
+                          label: const Text(
+                            '＋ 新增绑定 (不替换已有学生)',
+                            style: TextStyle(fontSize: 11.5),
+                          ),
+                          onSelected: _submitting
+                              ? null
+                              : (_) => setState(() {
+                                    _replaceStudentId = '';
+                                    _error = null;
+                                  }),
+                        ),
+                        for (final s in _targetAccount.students)
+                          ChoiceChip(
+                            visualDensity: VisualDensity.compact,
+                            selected: _replaceStudentId == s.studentId,
+                            label: Text(
+                              '⇄ 换绑：${s.studentName} (${s.changeBindStatusLabel})',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: s.isSemesterLocked ? Taste.muted : null,
+                              ),
+                            ),
+                            onSelected: _submitting
+                                ? null
+                                : (_) => setState(() {
+                                      _replaceStudentId =
+                                          _replaceStudentId == s.studentId
+                                              ? ''
+                                              : s.studentId;
+                                      _error = null;
+                                    }),
+                          ),
+                      ],
+                    ),
+                    if (replaceStu != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        replaceStu.isSemesterLocked
+                            ? '⚠️ 「${replaceStu.studentName}」处于180天学期锁定期（${replaceStu.changeBindStatusLabel}），换绑会返回 4137 错误。'
+                            : (replaceStu.isMinusOneSlot
+                                ? '⚠️ 正在使用「${replaceStu.studentName}」(-1活名额) 进行换绑：换绑成功后新学生将写入 +180天锁，本号上限将减 1；且系统会自动拦截已绑学生端的目标以防 4137 删源。'
+                                : '✓ 已选择将「${replaceStu.studentName}」换绑为下方指定的新学生（PATCH /v2/native-users/bind-student）。'),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: replaceStu.isSemesterLocked
+                              ? Taste.negative
+                              : Taste.pillWarnInk,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
@@ -1146,7 +1512,7 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                   _buildChannelChip(0, '姓名 + 学号/考号'),
                   _buildChannelChip(1, '学校 + 年级 + 姓名'),
                   _buildChannelChip(2, '学生端账号密码'),
-                  _buildChannelChip(3, '同班名册 + studentId 直绑'),
+                  _buildChannelChip(3, '同班名册 + studentId 直绑/换绑'),
                 ],
               ),
               const SizedBox(height: 12),
@@ -1342,9 +1708,13 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                                     onPressed: _submitting
                                         ? null
                                         : () => _submitBind(
-                                            directStudentId: ms.id),
-                                    child: const Text('立即绑定',
-                                        style: TextStyle(fontSize: 12)),
+                                              directStudentId: ms.id,
+                                              targetStudentName: ms.name,
+                                            ),
+                                    child: Text(
+                                      isRebindMode ? '换绑此人' : '立即绑定',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1398,7 +1768,13 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                         foregroundColor: Taste.primaryInk,
                       ),
                       onPressed: _submitting ? null : () => _submitBind(),
-                      child: Text(_submitting ? '正在绑定…' : '确认绑定学生'),
+                      child: Text(
+                        _submitting
+                            ? (isRebindMode ? '正在换绑…' : '正在绑定…')
+                            : (isRebindMode
+                                ? '确认换绑替换「${replaceStu.studentName}」'
+                                : '确认新增绑定'),
+                      ),
                     ),
                 ],
               ),
@@ -1430,6 +1806,8 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
 
   Widget _buildChannel3ClassmatesAndDirectBind() {
     final allBound = _allBoundStudents();
+    final replaceStu = _selectedReplaceStudent;
+    final isRebindMode = replaceStu != null;
     final filteredClassmates = _classmates.where((c) {
       if (_classmateSearch.trim().isEmpty) return true;
       final q = _classmateSearch.trim();
@@ -1444,9 +1822,11 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
           children: [
             Expanded(
               child: _inputField(
-                '直接输入或从下方名册点选 studentId (POST /v2/native-users/bind-students)',
+                isRebindMode
+                    ? '目标新学生 studentId (PATCH /v2/native-users/bind-student 替换「${replaceStu.studentName}」)'
+                    : '直接输入或从下方名册点选 studentId (POST /v2/native-users/bind-students)',
                 _stuIdCtrl,
-                '24 位内部 studentId，点击下方同学可自动填入或直接绑定',
+                '24 位内部 studentId，点击下方同学可自动填入或一键执行',
               ),
             ),
             const SizedBox(width: 8),
@@ -1454,11 +1834,18 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
               height: 36,
               child: FilledButton.tonal(
                 onPressed: _submitting ? null : () => _submitBind(),
-                child: const Text('直绑该 ID', style: TextStyle(fontSize: 12)),
+                child: Text(
+                  isRebindMode ? '换绑该 ID' : '直绑该 ID',
+                  style: const TextStyle(fontSize: 12),
+                ),
               ),
             ),
           ],
         ),
+        if (isRebindMode) ...[
+          const SizedBox(height: 8),
+          _inputField('学校授权码（选填，换绑跨校或需授权码时填写）', _authCtrl, '无授权码请留空'),
+        ],
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(10),
@@ -1679,15 +2066,34 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                                     visualDensity: VisualDensity.compact,
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 10),
+                                    backgroundColor: (isRebindMode &&
+                                            c.hasStudentAccount)
+                                        ? Taste.pillNegBg
+                                        : null,
+                                    foregroundColor: (isRebindMode &&
+                                            c.hasStudentAccount)
+                                        ? Taste.negative
+                                        : null,
                                   ),
                                   onPressed: (_submitting || alreadyInTarget)
                                       ? null
                                       : () {
                                           _stuIdCtrl.text = c.id;
-                                          _submitBind(directStudentId: c.id);
+                                          _submitBind(
+                                            directStudentId: c.id,
+                                            knownTargetHasStudentAccount:
+                                                c.hasStudentAccount,
+                                            targetStudentName: c.name,
+                                          );
                                         },
                                   child: Text(
-                                    alreadyInTarget ? '当前号已绑' : '一键直绑',
+                                    alreadyInTarget
+                                        ? '当前号已绑'
+                                        : (isRebindMode
+                                            ? (c.hasStudentAccount
+                                                ? '⚠️ 风险换绑'
+                                                : '⇄ 换绑此人')
+                                            : '一键直绑'),
                                     style: const TextStyle(fontSize: 11),
                                   ),
                                 ),
@@ -2581,6 +2987,8 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
   late HfsAccount _selectedAccount;
   late StudentInfo? _selectedStudent;
   late HfsAccount _bindTargetAccount;
+  // '' = 新增直绑 (`POST /v2/native-users/bind-students`); non-empty = 换绑替换源学生 (`PATCH /v2/native-users/bind-student`)
+  String _replaceStudentId = '';
   List<ClassmateBindEntry> _roster = const [];
   String _search = '';
   bool _onlyUnboundInTarget = false;
@@ -2594,6 +3002,14 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
       ? widget.accounts
       : <HfsAccount>[widget.account];
 
+  StudentInfo? get _selectedReplaceStudent {
+    if (_replaceStudentId.isEmpty) return null;
+    for (final s in _bindTargetAccount.students) {
+      if (s.studentId == _replaceStudentId) return s;
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -2602,6 +3018,21 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
         widget.currentStudent ?? widget.account.activeStudent;
     _bindTargetAccount = widget.account;
     _load();
+    _refreshTargetQuota();
+  }
+
+  Future<void> _refreshTargetQuota() async {
+    try {
+      await widget.client.hydrateAccountStudents(_bindTargetAccount);
+      if (!mounted) return;
+      setState(() {
+        if (_replaceStudentId.isNotEmpty &&
+            !_bindTargetAccount.students
+                .any((s) => s.studentId == _replaceStudentId)) {
+          _replaceStudentId = '';
+        }
+      });
+    } catch (_) {}
   }
 
   List<({HfsAccount acc, StudentInfo stu})> _allBoundStudents() {
@@ -2638,40 +3069,216 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
     }
   }
 
+  Future<bool?> _confirmRosterRebindSafety({
+    required StudentInfo sourceStu,
+    required String targetName,
+    bool? knownTargetHasStudentAccount,
+  }) async {
+    bool forceAllowStuAcc = false;
+    final needsStuAccWarn = knownTargetHasStudentAccount == true;
+    final needsMinusOneWarn = sourceStu.isMinusOneSlot;
+    if (!needsStuAccWarn && !needsMinusOneWarn) {
+      return false;
+    }
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => AlertDialog(
+          backgroundColor: Taste.surface,
+          title: Row(
+            children: [
+              Icon(
+                needsStuAccWarn
+                    ? Icons.warning_amber_rounded
+                    : Icons.swap_horiz_rounded,
+                color: needsStuAccWarn ? Taste.negative : Taste.warning,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  needsStuAccWarn
+                      ? '高危换绑风控拦截 (4137 删源风险)'
+                      : '确认消耗 -1 活名额进行换绑？',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '源学生（将被移除）：${sourceStu.studentName} (${sourceStu.changeBindStatusLabel})\n'
+                '目标新同学：$targetName\n'
+                '目标账号：${_bindTargetAccount.displayLabel}',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: Taste.text,
+                ),
+              ),
+              const SizedBox(height: 10),
+              if (needsMinusOneWarn)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Taste.pillWarnBg,
+                    borderRadius: BorderRadius.circular(Taste.radiusControl),
+                  ),
+                  child: Text(
+                    '• 「${sourceStu.studentName}」属于 changeBindTime == -1 的历史活名额（随时可换）。\n'
+                    '• 换绑为新同学后，新记录将写入 +180 天学期锁，本账号 -1 活名额将减 1，总容量上限将从 ${_bindTargetAccount.estimatedMaxQuota} 人永久降为 ${math.max(3, _bindTargetAccount.estimatedMaxQuota - 1)} 人。',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Taste.pillWarnInk,
+                    ),
+                  ),
+                ),
+              if (needsStuAccWarn) ...[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Taste.pillNegBg,
+                    borderRadius: BorderRadius.circular(Taste.radiusControl),
+                  ),
+                  child: const Text(
+                    '• 严重警告：该目标同学已激活学生端账号 (bindStudent 非空)！\n'
+                    '• 好分数上游 PATCH /v2/native-users/bind-student 存在非原子写缺陷：目标带有学生端账号时会返回 4137 Duplicate links，但会把源学生直接删除、目标却未加入！\n'
+                    '• 强烈建议取消本次换绑，改选「无学生号」的同学。',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Taste.pillNegInk,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  value: forceAllowStuAcc,
+                  onChanged: (v) =>
+                      setModalState(() => forceAllowStuAcc = v ?? false),
+                  title: const Text(
+                    '我已知晓 4137 删源不加目标风险，仍强制换绑',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Taste.negative,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(null),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor:
+                    needsStuAccWarn ? Taste.negative : Taste.primary,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: (needsStuAccWarn && !forceAllowStuAcc)
+                  ? null
+                  : () => Navigator.of(ctx).pop(forceAllowStuAcc),
+              child: const Text('确认执行换绑'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _handleBindByStudentId(
     String studentId, {
     String? studentLabel,
+    bool? knownTargetHasStudentAccount,
   }) async {
     final cleanId = studentId.trim();
     if (cleanId.isEmpty || _bindingStudentId != null) return;
+    final shownName = studentLabel ?? cleanId;
+    final replaceStu = _selectedReplaceStudent;
+    bool forceAllowStuAcc = false;
+
+    if (replaceStu != null) {
+      if (replaceStu.isSemesterLocked) {
+        setState(() {
+          _bindErrorMsg =
+              '源学生「${replaceStu.studentName}」处于学期锁定期（${replaceStu.changeBindStatusLabel}），每学期只能换绑一次 (4137)';
+          _bindSuccessMsg = null;
+        });
+        return;
+      }
+      bool? knownHasStu = knownTargetHasStudentAccount;
+      if (knownHasStu == null) {
+        for (final c in _roster) {
+          if (c.id == cleanId) {
+            knownHasStu = c.hasStudentAccount;
+            break;
+          }
+        }
+      }
+      final confirmed = await _confirmRosterRebindSafety(
+        sourceStu: replaceStu,
+        targetName: shownName,
+        knownTargetHasStudentAccount: knownHasStu,
+      );
+      if (confirmed == null) return;
+      forceAllowStuAcc = confirmed;
+    }
+
     setState(() {
       _bindingStudentId = cleanId;
       _bindErrorMsg = null;
       _bindSuccessMsg = null;
     });
     try {
-      final dash = await widget.client.bindStudentById(
-        account: _bindTargetAccount,
-        studentId: cleanId,
-      );
+      late DashboardData dash;
+      if (replaceStu != null) {
+        dash = await widget.client.rebindStudent(
+          account: _bindTargetAccount,
+          selectStudentId: replaceStu.studentId,
+          targetStudentId: cleanId,
+          knownTargetHasStudentAccount: knownTargetHasStudentAccount,
+          forceAllowStudentAccountTarget: forceAllowStuAcc,
+        );
+      } else {
+        dash = await widget.client.bindStudentById(
+          account: _bindTargetAccount,
+          studentId: cleanId,
+        );
+      }
       if (widget.onBound != null) {
         await widget.onBound!(_bindTargetAccount, dash);
       }
       if (!mounted) return;
-      final shownName = studentLabel ?? cleanId;
       setState(() {
         _bindingStudentId = null;
-        _bindSuccessMsg =
-            '已通过 POST /v2/native-users/bind-students 成功将「$shownName」绑定至账号 [${_bindTargetAccount.displayLabel}]';
+        if (replaceStu != null) {
+          _replaceStudentId = '';
+          _bindSuccessMsg =
+              '已通过 PATCH /v2/native-users/bind-student 成功将 [${_bindTargetAccount.displayLabel}] 下的「${replaceStu.studentName}」换绑为「$shownName」';
+        } else {
+          _bindSuccessMsg =
+              '已通过 POST /v2/native-users/bind-students 成功将「$shownName」新增绑定至账号 [${_bindTargetAccount.displayLabel}]';
+        }
       });
       await _load();
     } catch (e) {
       if (!mounted) return;
-      final shownName = studentLabel ?? cleanId;
       setState(() {
         _bindingStudentId = null;
         _bindErrorMsg =
-            '直绑「$shownName」到 [${_bindTargetAccount.displayLabel}] 失败：${e.toString().replaceFirst("Exception: ", "")}';
+            '${replaceStu != null ? "换绑" : "直绑"}「$shownName」到 [${_bindTargetAccount.displayLabel}] 失败：${e.toString().replaceFirst("Exception: ", "")}';
       });
     }
   }
@@ -2704,6 +3311,8 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
     final trimmedSearch = _search.trim();
     final canDirectBindSearchId =
         RegExp(r'^\d{10,32}$').hasMatch(trimmedSearch);
+    final replaceStu = _selectedReplaceStudent;
+    final isRebindMode = replaceStu != null;
 
     return Dialog(
       backgroundColor: Taste.surface,
@@ -2722,7 +3331,7 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                 children: [
                   Expanded(
                     child: Text(
-                      '同班同学名册与直绑 ($resolvedClassName · 共 ${_roster.length} 人)',
+                      '同班同学名册与直绑/换绑 ($resolvedClassName · 共 ${_roster.length} 人)',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -2780,97 +3389,159 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                 ),
               ],
               const SizedBox(height: 8),
-              // Target account selector for POST /v2/native-users/bind-students
+              // Target account & Add/Rebind slot selector
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Taste.raised,
+                  color: isRebindMode ? Taste.pillWarnBg : Taste.raised,
                   borderRadius: BorderRadius.circular(Taste.radiusControl),
-                  border: Border.all(color: Taste.border),
+                  border: Border.all(
+                    color: isRebindMode
+                        ? const Color(0xFFFDE68A)
+                        : Taste.border,
+                  ),
                 ),
-                child: Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 8,
-                  runSpacing: 6,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 6,
                       children: [
-                        const Icon(Icons.link, size: 15, color: Taste.accent),
-                        const SizedBox(width: 6),
-                        const Flexible(
-                          child: Text(
-                            'POST /v2/native-users/bind-students 挂载到：',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: Taste.text,
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              isRebindMode ? Icons.swap_horiz : Icons.link,
+                              size: 15,
+                              color: isRebindMode ? Taste.warning : Taste.accent,
                             ),
-                          ),
+                            const SizedBox(width: 6),
+                            const Flexible(
+                              child: Text(
+                                'POST /v2/native-users/bind-students 挂载到：',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: Taste.text,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 260),
+                              child: SizedBox(
+                                height: 32,
+                                child: DropdownButtonFormField<String>(
+                                  key: ValueKey(
+                                      'roster_bind_acc_${_bindTargetAccount.id}_${_bindTargetAccount.students.length}'),
+                                  initialValue: _bindTargetAccount.id,
+                                  isExpanded: true,
+                                  isDense: true,
+                                  decoration: InputDecoration(
+                                    filled: true,
+                                    fillColor: Taste.surface,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 4),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(
+                                          Taste.radiusControl),
+                                    ),
+                                  ),
+                                  items: [
+                                    for (final a in allAccounts)
+                                      DropdownMenuItem(
+                                        value: a.id,
+                                        child: Text(
+                                          '${a.displayLabel} (${a.roleType == 1 ? "学生端" : "家长端"} · 已绑${a.students.length}/${a.estimatedMaxQuota}人)',
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                  ],
+                                  onChanged: _bindingStudentId != null
+                                      ? null
+                                      : (val) {
+                                          if (val == null) return;
+                                          final found = allAccounts
+                                              .firstWhere((a) => a.id == val);
+                                          setState(() {
+                                            _bindTargetAccount = found;
+                                            _replaceStudentId = '';
+                                            _bindErrorMsg = null;
+                                            _bindSuccessMsg = null;
+                                          });
+                                          _refreshTargetQuota();
+                                        },
+                                ),
+                              ),
+                            ),
+                            FilterChip(
+                              visualDensity: VisualDensity.compact,
+                              selected: _onlyUnboundInTarget,
+                              label: const Text('仅看未绑',
+                                  style: TextStyle(fontSize: 11.5)),
+                              onSelected: (v) =>
+                                  setState(() => _onlyUnboundInTarget = v),
+                            ),
+                          ],
                         ),
                       ],
                     ),
+                    const SizedBox(height: 6),
                     Wrap(
-                      spacing: 8,
+                      spacing: 6,
                       runSpacing: 6,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 260),
-                          child: SizedBox(
-                            height: 32,
-                            child: DropdownButtonFormField<String>(
-                              key: ValueKey(
-                                  'roster_bind_acc_${_bindTargetAccount.id}_${_bindTargetAccount.students.length}'),
-                              initialValue: _bindTargetAccount.id,
-                              isExpanded: true,
-                              isDense: true,
-                              decoration: InputDecoration(
-                                filled: true,
-                                fillColor: Taste.surface,
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 4),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(
-                                      Taste.radiusControl),
-                                ),
-                              ),
-                              items: [
-                                for (final a in allAccounts)
-                                  DropdownMenuItem(
-                                    value: a.id,
-                                    child: Text(
-                                      '${a.displayLabel} (${a.roleType == 1 ? "学生端" : "家长端"} · 已绑${a.students.length}人)',
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                  ),
-                              ],
-                              onChanged: _bindingStudentId != null
-                                  ? null
-                                  : (val) {
-                                      if (val == null) return;
-                                      final found = allAccounts
-                                          .firstWhere((a) => a.id == val);
-                                      setState(() {
-                                        _bindTargetAccount = found;
-                                        _bindErrorMsg = null;
-                                        _bindSuccessMsg = null;
-                                      });
-                                    },
-                            ),
-                          ),
+                        const Text(
+                          '绑定/换绑槽位：',
+                          style: TextStyle(fontSize: 11.5, color: Taste.muted),
                         ),
-                        FilterChip(
+                        ChoiceChip(
                           visualDensity: VisualDensity.compact,
-                          selected: _onlyUnboundInTarget,
-                          label: const Text('仅看未绑',
-                              style: TextStyle(fontSize: 11.5)),
-                          onSelected: (v) =>
-                              setState(() => _onlyUnboundInTarget = v),
+                          selected: _replaceStudentId.isEmpty,
+                          label: Text(
+                            '＋ 新增直绑 (余${_bindTargetAccount.remainingAddQuota}名额)',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          onSelected: _bindingStudentId != null
+                              ? null
+                              : (_) => setState(() {
+                                    _replaceStudentId = '';
+                                    _bindErrorMsg = null;
+                                  }),
                         ),
+                        for (final s in _bindTargetAccount.students)
+                          ChoiceChip(
+                            visualDensity: VisualDensity.compact,
+                            selected: _replaceStudentId == s.studentId,
+                            label: Text(
+                              '⇄ 换绑：${s.studentName} (${s.changeBindStatusLabel})',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: s.isSemesterLocked ? Taste.muted : null,
+                              ),
+                            ),
+                            onSelected: _bindingStudentId != null
+                                ? null
+                                : (_) => setState(() {
+                                      _replaceStudentId =
+                                          _replaceStudentId == s.studentId
+                                              ? ''
+                                              : s.studentId;
+                                      _bindErrorMsg = null;
+                                    }),
+                          ),
                       ],
                     ),
                   ],
@@ -2980,9 +3651,16 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                         onPressed: _bindingStudentId != null
                             ? null
                             : () => _handleBindByStudentId(trimmedSearch),
-                        icon: const Icon(Icons.person_add_alt_1, size: 15),
-                        label: const Text('直绑该 ID',
-                            style: TextStyle(fontSize: 12)),
+                        icon: Icon(
+                          isRebindMode
+                              ? Icons.swap_horiz
+                              : Icons.person_add_alt_1,
+                          size: 15,
+                        ),
+                        label: Text(
+                          isRebindMode ? '换绑该 ID' : '直绑该 ID',
+                          style: const TextStyle(fontSize: 12),
+                        ),
                       ),
                     ),
                   ],
@@ -3154,6 +3832,14 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                                                 VisualDensity.compact,
                                             padding: const EdgeInsets.symmetric(
                                                 horizontal: 10),
+                                            backgroundColor: (isRebindMode &&
+                                                    c.hasStudentAccount)
+                                                ? Taste.pillNegBg
+                                                : null,
+                                            foregroundColor: (isRebindMode &&
+                                                    c.hasStudentAccount)
+                                                ? Taste.negative
+                                                : null,
                                           ),
                                           onPressed: (_bindingStudentId !=
                                                       null ||
@@ -3162,13 +3848,21 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                                               : () => _handleBindByStudentId(
                                                     c.id,
                                                     studentLabel: c.name,
+                                                    knownTargetHasStudentAccount:
+                                                        c.hasStudentAccount,
                                                   ),
                                           child: Text(
                                             isBindingThis
-                                                ? '直绑中…'
+                                                ? (isRebindMode
+                                                    ? '换绑中…'
+                                                    : '直绑中…')
                                                 : (alreadyInTarget
                                                     ? '该号已绑'
-                                                    : '一键直绑'),
+                                                    : (isRebindMode
+                                                        ? (c.hasStudentAccount
+                                                            ? '⚠️ 风险换绑'
+                                                            : '⇄ 换绑此人')
+                                                        : '一键直绑')),
                                             style:
                                                 const TextStyle(fontSize: 11.5),
                                           ),

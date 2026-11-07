@@ -188,6 +188,8 @@ class StudentInfo {
   final String className;
   final String xuehao;
   final int isVirtual;
+  final int linkedTime;
+  final int changeBindTime;
 
   const StudentInfo({
     required this.studentId,
@@ -197,7 +199,47 @@ class StudentInfo {
     required this.className,
     required this.xuehao,
     required this.isVirtual,
+    this.linkedTime = 0,
+    this.changeBindTime = 0,
   });
+
+  /// `-1` means legacy permanent unlocked slot (`随时可换`).
+  /// Consuming it via rebind writes `linkedTime + 180d` and reduces max quota by 1.
+  bool get isMinusOneSlot => changeBindTime == -1;
+
+  /// Locked when `changeBindTime` is a future timestamp (`linkedTime + 180d`).
+  bool get isSemesterLocked =>
+      changeBindTime > 0 &&
+      changeBindTime > DateTime.now().millisecondsSinceEpoch;
+
+  /// Whether this student slot can currently be rebound without triggering semester lock `4137`.
+  bool get canRebindNow => !isSemesterLocked;
+
+  String get changeBindStatusLabel {
+    if (changeBindTime == -1) {
+      return '随时可换 (-1活名额)';
+    }
+    if (changeBindTime > 0) {
+      final dateStr = formatDateMs(changeBindTime);
+      if (changeBindTime > DateTime.now().millisecondsSinceEpoch) {
+        return '锁定至 $dateStr';
+      }
+      return '可换绑 ($dateStr已解锁)';
+    }
+    return '待刷新锁状态';
+  }
+
+  String get changeBindShortBadge {
+    if (changeBindTime == -1) return '-1活名额';
+    if (changeBindTime > 0) {
+      final dateStr = formatDateMs(changeBindTime);
+      if (changeBindTime > DateTime.now().millisecondsSinceEpoch) {
+        return '锁至$dateStr';
+      }
+      return '可换绑';
+    }
+    return '';
+  }
 
   factory StudentInfo.fromUpstream(Map<String, dynamic> s) {
     final sid = strOf(s['studentId']).isNotEmpty
@@ -226,6 +268,8 @@ class StudentInfo {
           : strOf(s['className']),
       xuehao: xh,
       isVirtual: intOf(s['isVirtual'], 2),
+      linkedTime: intOf(s['linkedTime'], 0),
+      changeBindTime: intOf(s['changeBindTime'], 0),
     );
   }
 
@@ -237,6 +281,8 @@ class StudentInfo {
         'className': className,
         'xuehao': xuehao,
         'isVirtual': isVirtual,
+        'linkedTime': linkedTime,
+        'changeBindTime': changeBindTime,
       };
 }
 
@@ -284,6 +330,19 @@ class HfsAccount {
 
   String get activeStudentName =>
       activeStudent?.studentName ?? displayLabel;
+
+  /// Count of legacy `changeBindTime == -1` slots on this account
+  int get minusOneSlotCount =>
+      students.where((s) => s.changeBindTime == -1).length;
+
+  /// Exact Haofenshu quota formula: `max_total = min(6, count(changeBindTime == -1) + 3)`
+  int get estimatedMaxQuota => math.min(6, minusOneSlotCount + 3);
+
+  /// Remaining direct-add slots before hitting `4010` / `4025`
+  int get remainingAddQuota =>
+      math.max(0, estimatedMaxQuota - students.length);
+
+  bool get isQuotaFull => students.length >= estimatedMaxQuota;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,

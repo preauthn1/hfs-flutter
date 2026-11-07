@@ -982,12 +982,16 @@ class HfsUpstreamClient {
     );
   }
 
-  /// Bind student via Name + Exam/Student No (`GET /v2/users/matched-students` -> `PUT /v2/users/bind-student`)
+  /// Bind or Rebind student via Name + Exam/Student No:
+  /// - Resolves `studentId` via `GET /v2/users/matched-students`
+  /// - If `replaceStudentId` is empty -> adds via `PUT /v2/users/bind-student`
+  /// - If `replaceStudentId` is provided -> rebinds via `PATCH /v2/native-users/bind-student`
   Future<DashboardData> bindStudent({
     required HfsAccount account,
     required String studentName,
     required String identityCode,
     String? schoolAuthCode,
+    String replaceStudentId = '',
   }) async {
     await hydrateAccountStudents(account);
     final role = account.roleType == 1 ? 1 : 2;
@@ -1014,6 +1018,15 @@ class HfsUpstreamClient {
       throw Exception('匹配到的学生记录缺少有效 studentId');
     }
 
+    if (replaceStudentId.trim().isNotEmpty) {
+      return rebindStudent(
+        account: account,
+        selectStudentId: replaceStudentId.trim(),
+        targetStudentId: targetId,
+        schoolAuthCode: schoolAuthCode,
+      );
+    }
+
     final bindRes = await _hfsFetch(
       account,
       '/v2/users/bind-student',
@@ -1035,7 +1048,11 @@ class HfsUpstreamClient {
     }
 
     account.desiredStudentId = targetId;
-    await ensureAccount(account, targetStudentId: targetId);
+    await ensureAccount(
+      account,
+      targetStudentId: targetId,
+      forceSwitchSession: true,
+    );
     account.activeStudentId = targetId;
     invalidateCache(account.id);
     return fetchDashboard(account, allowCache: false);
@@ -1188,6 +1205,119 @@ class HfsUpstreamClient {
       forceSwitchSession: true,
     );
     account.activeStudentId = cleanId;
+    invalidateCache(account.id);
+    return fetchDashboard(account, allowCache: false);
+  }
+
+  /// Rebind (replace) an existing bound student with a new target student
+  /// via `PATCH /v2/native-users/bind-student` (`{selectStudentId, studentId, schoolAuthCode}`).
+  ///
+  /// Enforces safety rules:
+  /// 1. Takes a live `GET /v2/user-center/related-students` snapshot before writing.
+  /// 2. Verifies `selectStudentId` is not in semester lock (`changeBindTime > now` -> `4137`).
+  /// 3. Guards against targets that already hold a student account (`bindStudent` non-null ->
+  ///    `4137 Duplicate links` non-atomic bug where server deletes `selectStudentId` without adding `studentId`).
+  /// 4. Re-reads `GET /v2/user-center/related-students` after the write to verify the actual roster state.
+  Future<DashboardData> rebindStudent({
+    required HfsAccount account,
+    required String selectStudentId,
+    required String targetStudentId,
+    String? schoolAuthCode,
+    bool? knownTargetHasStudentAccount,
+    bool forceAllowStudentAccountTarget = false,
+  }) async {
+    final cleanSelectId = selectStudentId.trim();
+    final cleanTargetId = targetStudentId.trim();
+    if (cleanSelectId.isEmpty) {
+      throw Exception('请选择要被替换的源学生 (selectStudentId)');
+    }
+    if (cleanTargetId.isEmpty) {
+      throw Exception('目标学生 studentId 不能为空');
+    }
+    if (cleanSelectId == cleanTargetId) {
+      throw Exception('源学生与目标学生相同，无需换绑');
+    }
+    if (knownTargetHasStudentAccount == true &&
+        !forceAllowStudentAccountTarget) {
+      throw Exception(
+        '安全拦截：该目标同学已绑定学生端账号 (bindStudent非空)，好分数上游会返回 4137 Duplicate links 且非原子删除源学生！请优先换绑无学生端账号的目标，或勾选强制覆盖。',
+      );
+    }
+
+    // 1. Pre-write live snapshot of `/v2/user-center/related-students`
+    await hydrateAccountStudents(account);
+    final preStudents = List<StudentInfo>.from(account.students);
+    StudentInfo? sourceStu;
+    for (final s in preStudents) {
+      if (s.studentId == cleanSelectId) {
+        sourceStu = s;
+        break;
+      }
+    }
+    if (sourceStu == null) {
+      throw Exception('源学生 ($cleanSelectId) 不在当前账号已绑定名单中');
+    }
+    if (preStudents.any((s) => s.studentId == cleanTargetId)) {
+      throw Exception('目标学生已绑定在当前账号下，无需重复换绑');
+    }
+    if (sourceStu.isSemesterLocked) {
+      throw Exception(
+        '源学生「${sourceStu.studentName}」处于学期锁定期（解锁日：${formatDateMs(sourceStu.changeBindTime)}），每生每学期只能换绑一次 (code=4137)',
+      );
+    }
+
+    // 2. Execute `PATCH /v2/native-users/bind-student`
+    final res = await _hfsFetch(
+      account,
+      '/v2/native-users/bind-student',
+      method: 'PATCH',
+      jsonBody: <String, dynamic>{
+        'selectStudentId': cleanSelectId,
+        'studentId': cleanTargetId,
+        'schoolAuthCode':
+            (schoolAuthCode != null && schoolAuthCode.trim().isNotEmpty)
+                ? schoolAuthCode.trim()
+                : null,
+      },
+    );
+
+    // 3. Post-write live verification via `GET /v2/user-center/related-students` (2 verification reads)
+    await hydrateAccountStudents(account);
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    await hydrateAccountStudents(account);
+    final postStudents = List<StudentInfo>.from(account.students);
+
+    final hasSourceNow =
+        postStudents.any((s) => s.studentId == cleanSelectId);
+    final hasTargetNow =
+        postStudents.any((s) => s.studentId == cleanTargetId);
+
+    if (!_isCodeOk(res.body['code'])) {
+      final code = res.body['code'];
+      final msg = strOf(res.body['msg'], '换绑学生失败');
+      if (!hasSourceNow && !hasTargetNow) {
+        invalidateCache(account.id);
+        throw Exception(
+          '$msg (code=$code) — 警告：触发上游 4137 非原子写缺陷，源学生「${sourceStu.studentName}」已被移除且目标未加入（当前剩余 ${postStudents.length} 人）',
+        );
+      }
+      throw Exception(
+        '$msg (code=$code)（已回读核实：原有名单 ${postStudents.length} 人完好未变）',
+      );
+    }
+
+    final activeAfter = hasTargetNow
+        ? cleanTargetId
+        : (postStudents.isNotEmpty ? postStudents.first.studentId : '');
+    if (activeAfter.isNotEmpty) {
+      account.desiredStudentId = activeAfter;
+      await ensureAccount(
+        account,
+        targetStudentId: activeAfter,
+        forceSwitchSession: true,
+      );
+      account.activeStudentId = activeAfter;
+    }
     invalidateCache(account.id);
     return fetchDashboard(account, allowCache: false);
   }

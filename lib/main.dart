@@ -657,7 +657,10 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
     );
   }
 
-  void _openAdvancedBindStudentModal({HfsAccount? targetAccount}) {
+  void _openAdvancedBindStudentModal({
+    HfsAccount? targetAccount,
+    String? initialReplaceStudentId,
+  }) {
     final initial = targetAccount ?? _currentAccount;
     if (initial == null) return;
     showDialog<void>(
@@ -666,6 +669,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         client: _client,
         accounts: _accounts,
         initialAccount: initial,
+        initialReplaceStudentId: initialReplaceStudentId,
         onBound: (acc, dash) async {
           _selectedAccountId = acc.id;
           await _persistAccountsAndSettings();
@@ -1720,7 +1724,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          '${acc.maskedLogin} · 已绑 ${acc.students.length} 人',
+                          '${acc.maskedLogin} · 已绑 ${acc.students.length}/${acc.estimatedMaxQuota} 人${acc.minusOneSlotCount > 0 ? " (-1活名额×${acc.minusOneSlotCount})" : ""}',
                           style: const TextStyle(
                             fontSize: 11,
                             color: Taste.muted,
@@ -1797,7 +1801,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                       }),
                     ),
                     _miniIconBtn(
-                      label: '高级',
+                      label: '多通道/换绑',
                       onTap: () =>
                           _openAdvancedBindStudentModal(targetAccount: acc),
                     ),
@@ -1950,6 +1954,33 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                             ),
                           ),
                         ),
+                        if (stu.changeBindShortBadge.isNotEmpty) ...[
+                          const SizedBox(width: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: stu.isMinusOneSlot
+                                  ? Taste.pillBlueBg
+                                  : (stu.isSemesterLocked
+                                      ? Taste.raised
+                                      : Taste.pillPosBg),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              stu.changeBindShortBadge,
+                              style: Taste.numStyle(
+                                size: 9.5,
+                                weight: FontWeight.w500,
+                                color: stu.isMinusOneSlot
+                                    ? Taste.pillBlueInk
+                                    : (stu.isSemesterLocked
+                                        ? Taste.muted
+                                        : Taste.pillPosInk),
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 2),
@@ -2009,6 +2040,34 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                       ),
                   ],
                 ),
+              const SizedBox(width: 6),
+              Tooltip(
+                message: '将该学生槽位换绑为其他学生 (${stu.changeBindStatusLabel})',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(4),
+                  onTap: () => _openAdvancedBindStudentModal(
+                    targetAccount: acc,
+                    initialReplaceStudentId: stu.studentId,
+                  ),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Taste.surface,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Taste.control),
+                    ),
+                    child: const Text(
+                      '换绑',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w500,
+                        color: Taste.text,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),

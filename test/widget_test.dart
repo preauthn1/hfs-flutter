@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hfs_flutter/hfs_client.dart';
+import 'package:hfs_flutter/hfs_models.dart';
 import 'package:hfs_flutter/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -31,6 +32,59 @@ void main() {
       ),
       throwsStateError,
     );
+  });
+
+  test('Dynamic quota formula min(6, count(-1) + 3) and changeBindTime lock', () {
+    final futureLock = DateTime.now()
+        .add(const Duration(days: 120))
+        .millisecondsSinceEpoch;
+    final acc = HfsAccount(
+      id: 'acc_quota',
+      label: '配额测试号',
+      roleType: 2,
+      loginName: '13800000000',
+      password: '',
+      cookies: <String>[],
+      students: [
+        const StudentInfo(
+          studentId: 's1',
+          studentName: '甲',
+          schoolName: '示例中学',
+          grade: '初三',
+          className: '1班',
+          xuehao: '1001',
+          isVirtual: 2,
+          changeBindTime: -1,
+        ),
+        const StudentInfo(
+          studentId: 's2',
+          studentName: '乙',
+          schoolName: '示例中学',
+          grade: '初三',
+          className: '1班',
+          xuehao: '1002',
+          isVirtual: 2,
+          changeBindTime: -1,
+        ),
+        StudentInfo(
+          studentId: 's3',
+          studentName: '丙',
+          schoolName: '示例中学',
+          grade: '初三',
+          className: '1班',
+          xuehao: '1003',
+          isVirtual: 2,
+          changeBindTime: futureLock,
+        ),
+      ],
+    );
+    expect(acc.minusOneSlotCount, 2);
+    expect(acc.estimatedMaxQuota, 5); // min(6, 2 + 3) = 5
+    expect(acc.remainingAddQuota, 2);
+    expect(acc.students[0].isMinusOneSlot, isTrue);
+    expect(acc.students[0].canRebindNow, isTrue);
+    expect(acc.students[2].isSemesterLocked, isTrue);
+    expect(acc.students[2].canRebindNow, isFalse);
   });
 
   testWidgets('Mobile and Desktop Taste-Skill layouts render without overflow',
@@ -243,12 +297,28 @@ void main() {
     expect(find.text('数学 历次成绩变化趋势折线图与学科均衡度'), findsOneWidget);
     expect(find.text('数学 · 试卷与答题卡调阅'), findsOneWidget);
 
-    // 4. Verify combined Classmates Roster + POST /v2/native-users/bind-students dialog
+    // 4. Verify combined Classmates Roster + POST /v2/native-users/bind-students + Rebind dialog
     expect(find.text('同班名册与直绑'), findsOneWidget);
     await tester.tap(find.text('同班名册与直绑'));
     await tester.pump(const Duration(milliseconds: 250));
     expect(
       find.text('POST /v2/native-users/bind-students 挂载到：'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('⇄ 换绑：测试生甲'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.close).last);
+    await tester.pump(const Duration(milliseconds: 250));
+
+    // 5. Verify direct per-student '换绑' button in left dock opens BindStudentAdvancedDialog in rebind mode
+    expect(find.text('换绑'), findsWidgets);
+    await tester.tap(find.text('换绑').first);
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(
+      find.textContaining('换绑学生（替换「测试生甲」· PATCH bind-student）'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('确认换绑替换「测试生甲」'),
       findsOneWidget,
     );
   });
