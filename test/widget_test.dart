@@ -38,11 +38,11 @@ void main() {
     final user = MiniRelatedUser.fromJson({
       'userId': 'mini_user_fixture',
       'type': 2,
-      'phone': '13800000000',
-      'key': 1794074360930,
+      'phone': '[REDACTED]',
+      'key': 'mini_key_fixture',
     });
     expect(user.roleType, 2);
-    expect(user.key, '1794074360930');
+    expect(user.key, 'mini_key_fixture');
     expect(user.roleLabel, '家长端');
     expect(
       () => HfsUpstreamClient.assertAllowedHost(
@@ -59,7 +59,7 @@ void main() {
       id: 'acc_quota',
       label: '配额测试号',
       roleType: 2,
-      loginName: '13800000000',
+      loginName: 'fixture_phone',
       password: '',
       cookies: <String>[],
       students: [
@@ -111,7 +111,7 @@ void main() {
         'id': 'acc_test_1',
         'label': '测试家长号',
         'roleType': 2,
-        'loginName': '13800000000',
+        'loginName': 'fixture_phone',
         'password': '',
         'cookies': <String>['hfs-session-id=mock'],
         'activeStudentId': 'stu_1',

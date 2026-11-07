@@ -1838,7 +1838,7 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                           children: [
                             Expanded(
                               child: _inputField(
-                                  '学校 ID (如已知可直接填)', _schoolIdCtrl, '如 103797'),
+                                  '学校 ID (如已知可直接填)', _schoolIdCtrl, '如 [REDACTED]'),
                             ),
                             const SizedBox(width: 8),
                             SizedBox(

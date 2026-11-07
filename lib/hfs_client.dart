@@ -327,6 +327,9 @@ class HfsUpstreamClient {
         ? Map<String, dynamic>.from(res.body['data'] as Map)
         : const <String, dynamic>{};
     final jwt = strOf(data['cookie']);
+    if (jwt.isEmpty) {
+      throw Exception('好分数微信登录未返回有效会话');
+    }
     final cookies = _miniSessionCookies(jwt: jwt, setCookies: res.cookies);
     return MiniLoginResult(
       userId: strOf(data['userId'], user.userId),
@@ -417,6 +420,9 @@ class HfsUpstreamClient {
     // `_miniRelated` is deliberately not persisted; the wx.login code and
     // account discovery response are short-lived and must be reacquired.
     // Only the exchanged session cookie is persisted in HfsAccount.
+    if (session.jwt.trim().isEmpty) {
+      throw Exception('微信免密登录未返回有效会话');
+    }
     final account = HfsAccount(
       id: accountIdFor(session.userId, session.roleType),
       label: label,

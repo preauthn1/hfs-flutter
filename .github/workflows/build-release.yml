@@ -149,8 +149,8 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v2.5.0' }}
-          name: 好分数原生工作台 ${{ github.ref_type == 'tag' && github.ref_name || 'v2.5.0' }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v2.6.1' }}
+          name: 好分数原生工作台 ${{ github.ref_type == 'tag' && github.ref_name || 'v2.6.1' }}
           body: |
             好分数原生 Flutter 客户端（手机 + 电脑全端适配，100% 直连好分数官方后端 `hfs-be.yunxiao.com` / `hfs-wechat-be.yunxiao.com` / `yj-oss.yunxiao.com`）。
             - **微信小程序 `/v2/mini/*`**: 账号发现、免密会话换取、短信校验注册与会话退出；仅接受用户自有 `wx.login()` code/unionId/手机号。
