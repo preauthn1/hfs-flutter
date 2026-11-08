@@ -647,24 +647,32 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
       context: context,
       builder: (ctx) => Dialog(
         backgroundColor: Taste.surface,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
+        surfaceTintColor: Colors.transparent,
+        insetPadding: Taste.dialogInsetPadding(ctx),
+        clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Taste.radiusCard),
         ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: HfsAuthPanel(
-            client: _client,
-            reauthAccount: reauthAccount,
-            isDialog: true,
-            onAuthenticated: (acc) async {
-              if (ctx.mounted) Navigator.of(ctx).pop();
-              await _handleUpsertAuthenticatedAccount(acc);
-            },
-            onMiniAuthenticated: (acc) async {
-              if (ctx.mounted) Navigator.of(ctx).pop();
-              await _handleUpsertAuthenticatedAccount(acc);
-            },
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 440,
+            maxHeight: Taste.dialogMaxHeight(ctx, desktopMax: 700),
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: HfsAuthPanel(
+              client: _client,
+              reauthAccount: reauthAccount,
+              isDialog: true,
+              onAuthenticated: (acc) async {
+                if (ctx.mounted) Navigator.of(ctx).pop();
+                await _handleUpsertAuthenticatedAccount(acc);
+              },
+              onMiniAuthenticated: (acc) async {
+                if (ctx.mounted) Navigator.of(ctx).pop();
+                await _handleUpsertAuthenticatedAccount(acc);
+              },
+            ),
           ),
         ),
       ),
@@ -857,13 +865,17 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         context: context,
         builder: (ctx) => Dialog(
           backgroundColor: Taste.surface,
-          insetPadding: const EdgeInsets.all(20),
+          surfaceTintColor: Colors.transparent,
+          insetPadding: Taste.dialogInsetPadding(ctx),
           clipBehavior: Clip.antiAlias,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(Taste.radiusSheet),
           ),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 920, maxHeight: 860),
+            constraints: BoxConstraints(
+              maxWidth: 920,
+              maxHeight: Taste.dialogMaxHeight(ctx, desktopMax: 860),
+            ),
             child: PaperInspectionPane(
               client: _client,
               account: acc,
@@ -1752,6 +1764,10 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                         child: DropdownButtonFormField<int>(
                           initialValue: _inlineAddRole,
                           isDense: true,
+                          dropdownColor: Taste.surface,
+                          menuMaxHeight: 220,
+                          borderRadius:
+                              BorderRadius.circular(Taste.radiusControl),
                           decoration: InputDecoration(
                             contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 6),
@@ -2542,6 +2558,10 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                                     curExam?.examId ?? exams.first.examId,
                                 isExpanded: true,
                                 isDense: true,
+                                dropdownColor: Taste.surface,
+                                menuMaxHeight: 260,
+                                borderRadius:
+                                    BorderRadius.circular(Taste.radiusControl),
                                 decoration: InputDecoration(
                                   contentPadding: const EdgeInsets.symmetric(
                                       horizontal: 10, vertical: 4),
@@ -4382,15 +4402,20 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                 onTap: widget.onClose,
                 borderRadius: BorderRadius.circular(Taste.radiusControl),
                 child: Container(
+                  constraints:
+                      const BoxConstraints(minWidth: 52, minHeight: 32),
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  alignment: Alignment.center,
                   decoration: BoxDecoration(
+                    color: Taste.surface,
                     border: Border.all(color: Taste.control),
                     borderRadius: BorderRadius.circular(Taste.radiusControl),
                   ),
                   child: const Text(
                     '收起',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+                    style:
+                        TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500),
                   ),
                 ),
               ),
@@ -5171,14 +5196,16 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                   final title = Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        '第 ${q.name} 题',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Taste.text,
+                      Flexible(
+                        child: Text(
+                          '第 ${q.name} 题',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Taste.text,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 6),

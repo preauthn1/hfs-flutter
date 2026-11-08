@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hfs_flutter/answer_sheet_painter.dart';
 import 'package:hfs_flutter/hfs_client.dart';
 import 'package:hfs_flutter/hfs_models.dart';
 import 'package:hfs_flutter/main.dart';
@@ -58,10 +60,10 @@ void main() {
     );
   });
 
-  test('Dynamic quota formula min(6, count(-1) + 3) and changeBindTime lock', () {
-    final futureLock = DateTime.now()
-        .add(const Duration(days: 120))
-        .millisecondsSinceEpoch;
+  test('Dynamic quota formula min(6, count(-1) + 3) and changeBindTime lock',
+      () {
+    final futureLock =
+        DateTime.now().add(const Duration(days: 120)).millisecondsSinceEpoch;
     final acc = HfsAccount(
       id: 'acc_quota',
       label: '配额测试号',
@@ -265,12 +267,77 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
     expect(find.text('好分数账号与绑定学生'), findsOneWidget);
 
-    // Open Settings modal on 320px screen
+    // Open Settings modal on 320px screen & verify bottom bar clearance + '取消' hit area
+    final navBarTop320 = tester.getTopLeft(find.byType(NavigationBar)).dy;
     await tester.tap(find.text('设置'));
     await tester.pump(const Duration(milliseconds: 250));
     expect(find.text('工作台设置与好分数上游只读诊断'), findsOneWidget);
+    final settingsDialogBottom = tester
+        .getBottomRight(
+          find
+              .descendant(
+                of: find.byType(Dialog),
+                matching: find.byType(Material),
+              )
+              .first,
+        )
+        .dy;
+    expect(settingsDialogBottom, lessThanOrEqualTo(navBarTop320));
+    final cancelBtnSize =
+        tester.getSize(find.widgetWithText(OutlinedButton, '取消'));
+    expect(cancelBtnSize.width, greaterThanOrEqualTo(80));
+    expect(cancelBtnSize.height, greaterThanOrEqualTo(38));
     await tester.tap(find.text('取消'));
     await tester.pump(const Duration(milliseconds: 250));
+
+    // Open BindStudentAdvancedDialog in rebind mode on 320x740 mobile screen,
+    // switch to channel 1 ('学校 + 年级 + 姓名') where '取消' is at bottom-right,
+    // and verify zero overflow, bottom bar clearance, and clean '取消' tap target.
+    await tester.tap(find.text('换绑').first);
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(
+      find.textContaining('换绑学生（替换「测试生甲」· PATCH bind-student）'),
+      findsOneWidget,
+    );
+    final bindDialogBottom = tester
+        .getBottomRight(
+          find
+              .descendant(
+                of: find.byType(Dialog),
+                matching: find.byType(Material),
+              )
+              .first,
+        )
+        .dy;
+    expect(bindDialogBottom, lessThanOrEqualTo(navBarTop320));
+    await tester.tap(find.text('学校 + 年级 + 姓名'));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.text('不知道学校 ID？展开省市区检索学校'), findsOneWidget);
+    final channel1CancelRect =
+        tester.getRect(find.widgetWithText(OutlinedButton, '取消'));
+    final queryBtnRect =
+        tester.getRect(find.widgetWithText(OutlinedButton, '查询学生'));
+    expect(channel1CancelRect.overlaps(queryBtnRect), isFalse);
+    expect(channel1CancelRect.bottom, lessThanOrEqualTo(bindDialogBottom));
+    await tester.tap(find.widgetWithText(OutlinedButton, '取消'));
+    await tester.pump(const Duration(milliseconds: 250));
+
+    // Trigger image context popup menu near bottom-right corner on 320x740 mobile screen
+    // and verify it never covers the bottom NavigationBar and '取消' dismisses cleanly.
+    final navElement = tester.element(find.byType(NavigationBar));
+    HfsImageClipboardAndExporter.showImageContextMenu(
+      context: navElement,
+      globalPosition: const Offset(305, 715),
+      rawBytes: Uint8List.fromList(<int>[1, 2, 3, 4]),
+      label: 'test_sheet',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('复制图片到剪贴板'), findsOneWidget);
+    expect(find.text('取消'), findsOneWidget);
+    final popupCancelRect = tester.getRect(find.text('取消'));
+    expect(popupCancelRect.bottom, lessThanOrEqualTo(navBarTop320));
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
 
     // Switch back to mobile tab 0 (成绩单) at 360x800
     tester.view.physicalSize = const Size(360, 800);

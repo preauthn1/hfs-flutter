@@ -353,45 +353,69 @@ class HfsImageClipboardAndExporter {
     VoidCallback? onOpenLightbox,
   }) async {
     final hasOverlay = overlay != null;
+    final screenSize = MediaQuery.sizeOf(context);
+    final viewPadding = MediaQuery.paddingOf(context);
+    final isMobile = screenSize.width < 860;
     final menuWidth = math.min(
-      360.0,
-      math.max(200.0, MediaQuery.sizeOf(context).width - 24),
+      320.0,
+      math.max(200.0, screenSize.width - 28),
     );
-    final safeDx =
-        globalPosition.dx.clamp(12.0, MediaQuery.sizeOf(context).width - 12);
-    final safeDy =
-        globalPosition.dy.clamp(12.0, MediaQuery.sizeOf(context).height - 12);
+    int itemCount = 3; // copy_current, download_current, cancel
+    if (hasOverlay && showOverlay) {
+      itemCount += 2; // copy_raw, download_raw
+    }
+    if (Platform.isWindows) {
+      itemCount += 1;
+    }
+    if (onOpenLightbox != null) {
+      itemCount += 1;
+    }
+    final estimatedMenuHeight = itemCount * 46.0 + 36.0;
+    final topReserve = math.max(16.0, viewPadding.top + 54.0);
+    final bottomReserve = math.max(
+        isMobile ? 88.0 : 24.0, viewPadding.bottom + (isMobile ? 78.0 : 20.0));
+    final maxDx = math.max(14.0, screenSize.width - menuWidth - 14.0);
+    final maxDy = math.max(
+      topReserve,
+      screenSize.height - bottomReserve - estimatedMenuHeight,
+    );
+    final safeDx = globalPosition.dx.clamp(14.0, maxDx);
+    final safeDy = globalPosition.dy.clamp(topReserve, maxDy);
 
     Widget menuItem(String text, IconData icon, Color color) {
-      return SizedBox(
-        width: menuWidth,
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                text,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: color),
+      return Row(
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w500,
+                color: color,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       );
     }
 
     final selected = await showMenu<String>(
       context: context,
-      position: RelativeRect.fromLTRB(
-        safeDx,
-        safeDy,
-        safeDx + 1,
-        safeDy + 1,
+      position: RelativeRect.fromSize(
+        Rect.fromLTWH(safeDx, safeDy, 1, 1),
+        screenSize,
+      ),
+      constraints: BoxConstraints(
+        minWidth: menuWidth,
+        maxWidth: menuWidth,
       ),
       color: Colors.white,
-      elevation: 4,
+      surfaceTintColor: Colors.transparent,
+      elevation: 6,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: const BorderSide(color: Color(0xFFE8EAEC)),
@@ -399,7 +423,8 @@ class HfsImageClipboardAndExporter {
       items: <PopupMenuEntry<String>>[
         PopupMenuItem<String>(
           value: 'copy_current',
-          height: 48,
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           child: menuItem(
             hasOverlay && showOverlay ? '复制图片（含红笔批改层）' : '复制图片到剪贴板',
             Icons.copy_all_outlined,
@@ -409,7 +434,8 @@ class HfsImageClipboardAndExporter {
         if (hasOverlay && showOverlay)
           PopupMenuItem<String>(
             value: 'copy_raw',
-            height: 48,
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
             child: menuItem(
               '复制纯原图（不含批改框）',
               Icons.image_outlined,
@@ -419,7 +445,8 @@ class HfsImageClipboardAndExporter {
         const PopupMenuDivider(height: 6),
         PopupMenuItem<String>(
           value: 'download_current',
-          height: 48,
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           child: menuItem(
             hasOverlay && showOverlay
                 ? '保存至下载目录（含批改层 .png）'
@@ -431,7 +458,8 @@ class HfsImageClipboardAndExporter {
         if (hasOverlay && showOverlay)
           PopupMenuItem<String>(
             value: 'download_raw',
-            height: 48,
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
             child: menuItem(
               '保存纯原图至下载目录 (.png)',
               Icons.file_download_outlined,
@@ -441,7 +469,8 @@ class HfsImageClipboardAndExporter {
         if (Platform.isWindows)
           PopupMenuItem<String>(
             value: 'save_as_dialog',
-            height: 48,
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
             child: menuItem(
               '图片另存为… (选择文件夹)',
               Icons.folder_open_outlined,
@@ -452,7 +481,8 @@ class HfsImageClipboardAndExporter {
           const PopupMenuDivider(height: 6),
           PopupMenuItem<String>(
             value: 'lightbox',
-            height: 48,
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
             child: menuItem(
               '全屏无损放大阅卷 (支持 ←/→ 切图)',
               Icons.zoom_out_map,
@@ -460,10 +490,40 @@ class HfsImageClipboardAndExporter {
             ),
           ),
         ],
+        const PopupMenuDivider(height: 6),
+        PopupMenuItem<String>(
+          value: 'cancel',
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4F6F8),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFFCDCED1)),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.close, size: 15, color: Color(0xFF131416)),
+                SizedBox(width: 6),
+                Text(
+                  '取消',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF131416),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
 
-    if (selected == null || !context.mounted) return;
+    if (selected == null || selected == 'cancel' || !context.mounted) return;
     if (selected == 'lightbox') {
       onOpenLightbox?.call();
       return;
