@@ -41,8 +41,10 @@ jobs:
           keyAlias=$ANDROID_KEY_ALIAS
           storeFile=$RUNNER_TEMP/hfs-flutter-release.jks
           EOF
+          chmod 600 android/key.properties "$RUNNER_TEMP/hfs-flutter-release.jks"
       - run: flutter pub get
       - run: flutter analyze --no-pub
+      - run: flutter test test/widget_test.dart
       - run: flutter build apk --release --target-platform android-arm64
       - name: Package & verify Android APK signature
         run: |
@@ -50,6 +52,8 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk out/hfs_flutter_android_arm64.apk
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
           "$APKSIGNER" verify --print-certs out/hfs_flutter_android_arm64.apk
+          CERT_SHA256=$("$APKSIGNER" verify --print-certs out/hfs_flutter_android_arm64.apk 2>&1 | awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print $2}')
+          test "$CERT_SHA256" = "b3227391cd532acc2e3322521f97892262a0e828b61bbce03fb24b450169d346"
           sha256sum out/hfs_flutter_android_arm64.apk
       - uses: actions/upload-artifact@v4
         with:
@@ -149,8 +153,8 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v2.6.2' }}
-          name: 好分数原生工作台 ${{ github.ref_type == 'tag' && github.ref_name || 'v2.6.2' }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v2.6.3' }}
+          name: 好分数原生工作台 ${{ github.ref_type == 'tag' && github.ref_name || 'v2.6.3' }}
           body: |
             好分数原生 Flutter 客户端（手机 + 电脑全端适配，100% 直连好分数官方后端 `hfs-be.yunxiao.com` / `hfs-wechat-be.yunxiao.com` / `yj-oss.yunxiao.com`）。
             - **微信小程序 `/v2/mini/*`**: 账号发现、免密会话换取、短信校验注册与会话退出；仅接受用户自有 `wx.login()` code/unionId/手机号。

@@ -183,8 +183,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
       if (rawSettings != null && rawSettings.isNotEmpty) {
         final decoded = jsonDecode(rawSettings);
         if (decoded is Map) {
-          _settings =
-              AppSettings.fromJson(Map<String, dynamic>.from(decoded));
+          _settings = AppSettings.fromJson(Map<String, dynamic>.from(decoded));
           _inspectorWidth = _settings.inspectorWidth;
         }
       }
@@ -398,9 +397,8 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
     final reqAccountId = acc.id;
     final reqStudentId = stu.studentId;
     final allowCache = !forceNetwork && !_settings.autoHydrateOnSwitch;
-    final cached = allowCache
-        ? _client.peekCachedDashboard(acc.id, stu.studentId)
-        : null;
+    final cached =
+        allowCache ? _client.peekCachedDashboard(acc.id, stu.studentId) : null;
 
     setState(() {
       _selectedAccountId = acc.id;
@@ -643,6 +641,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
       builder: (ctx) => MiniScoresDialog(client: _client, account: acc),
     );
   }
+
   void _openAuthOrRegisterModal({HfsAccount? reauthAccount}) {
     showDialog<void>(
       context: context,
@@ -883,7 +882,8 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      enableDrag: false, // Prevents accidental sheet drag when scrolling the answer sheet
+      enableDrag:
+          false, // Prevents accidental sheet drag when scrolling the answer sheet
       backgroundColor: Taste.surface,
       clipBehavior: Clip.antiAlias,
       shape: const RoundedRectangleBorder(
@@ -1237,9 +1237,218 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
 
   Widget _buildTasteTopBar(bool isDesktop) {
     final curExam = _selectedExam;
+    if (!isDesktop) {
+      return Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        color: Taste.ground,
+        child: Row(
+          children: [
+            Container(
+              width: 26,
+              height: 26,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: Taste.accent,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Image.asset(
+                'assets/images/app_logo.png',
+                fit: BoxFit.cover,
+                errorBuilder: (ctx, err, st) => const Center(
+                  child: Text(
+                    '好',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                '好分数工作台',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
+                  color: Taste.text,
+                ),
+              ),
+            ),
+            if (_loadingDashboard)
+              const Padding(
+                padding: EdgeInsets.only(right: 6),
+                child: SizedBox(
+                  width: 13,
+                  height: 13,
+                  child: CircularProgressIndicator(strokeWidth: 1.6),
+                ),
+              ),
+            _buildTopBarBtn(
+              label: '加号',
+              icon: Icons.person_add_alt_outlined,
+              compact: true,
+              onTap: () => _openAuthOrRegisterModal(),
+            ),
+            const SizedBox(width: 5),
+            _buildTopBarBtn(
+              label: '刷新',
+              icon: Icons.refresh,
+              compact: true,
+              onTap: _loadingDashboard
+                  ? null
+                  : () => _loadDashboardForCurrent(allowCache: false),
+            ),
+            const SizedBox(width: 5),
+            _buildTopBarBtn(
+              label: '设置',
+              icon: Icons.tune,
+              compact: true,
+              onTap: _openSettingsModal,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (ctx, box) {
+        if (box.maxWidth < 1180) {
+          return _buildCompactDesktopTopBar(curExam);
+        }
+        return Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          color: Taste.ground,
+          child: Row(
+            children: [
+              Container(
+                width: 26,
+                height: 26,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: Taste.accent,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Image.asset(
+                  'assets/images/app_logo.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (ctx, err, st) => const Center(
+                    child: Text(
+                      '好',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  '好分数成绩工作台',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Taste.text,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.only(left: 8),
+                decoration: const BoxDecoration(
+                  border: Border(left: BorderSide(color: Taste.border)),
+                ),
+                child: const Text(
+                  '多账号与多学生试卷成绩同步',
+                  style: TextStyle(fontSize: 12, color: Taste.muted),
+                ),
+              ),
+              const Spacer(),
+              _buildStatPill('已挂账号', '${_accounts.length}'),
+              const SizedBox(width: 8),
+              _buildStatPill('已绑学生', '$_totalBoundStudentsCount'),
+              const SizedBox(width: 8),
+              _buildStatPill('当前考试', curExam != null ? curExam.name : '—'),
+              const SizedBox(width: 14),
+              if (_loadingDashboard)
+                Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Taste.text,
+                    borderRadius: BorderRadius.circular(Taste.radiusControl),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 11,
+                        height: 11,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.6,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(width: 6),
+                      Text('同步中…',
+                          style: TextStyle(fontSize: 11, color: Colors.white)),
+                    ],
+                  ),
+                ),
+              _buildTopBarBtn(
+                label: '账号登录/注册',
+                icon: Icons.person_add_alt_outlined,
+                onTap: () => _openAuthOrRegisterModal(),
+              ),
+              const SizedBox(width: 5),
+              _buildTopBarBtn(
+                label: '微信侧成绩',
+                icon: Icons.fact_check_outlined,
+                onTap: _openMiniScoresModal,
+              ),
+              const SizedBox(width: 5),
+              _buildTopBarBtn(
+                label: '刷新当前',
+                icon: Icons.refresh,
+                onTap: _loadingDashboard
+                    ? null
+                    : () => _loadDashboardForCurrent(allowCache: false),
+              ),
+              const SizedBox(width: 5),
+              _buildTopBarBtn(
+                label: '导出凭证',
+                icon: Icons.download_outlined,
+                onTap: () => _exportCredentialFileDirect(),
+              ),
+              const SizedBox(width: 6),
+              _buildTopBarBtn(
+                label: '设置',
+                icon: Icons.tune,
+                onTap: _openSettingsModal,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCompactDesktopTopBar(ExamRecord? curExam) {
     return Container(
       height: 48,
-      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 14 : 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
       color: Taste.ground,
       child: Row(
         children: [
@@ -1267,125 +1476,47 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          if (isDesktop)
-            Flexible(
-              child: Text(
-                '好分数成绩工作台',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Taste.text,
-                ),
-              ),
-            )
-          else
-            Expanded(
-              child: Text(
-                '好分数工作台',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w700,
-                  color: Taste.text,
-                ),
-              ),
-            ),
-          if (isDesktop) ...[
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.only(left: 8),
-              decoration: const BoxDecoration(
-                border: Border(left: BorderSide(color: Taste.border)),
-              ),
-              child: const Text(
-                '多账号与多学生试卷成绩同步',
-                style: TextStyle(fontSize: 12, color: Taste.muted),
-              ),
-            ),
-          ],
-          const SizedBox(width: 6),
-          if (isDesktop) const Spacer(),
-          if (isDesktop) ...[
-            _buildStatPill('已挂账号', '${_accounts.length}'),
-            const SizedBox(width: 8),
-            _buildStatPill('已绑学生', '$_totalBoundStudentsCount'),
-            const SizedBox(width: 8),
-            _buildStatPill(
-              '当前考试',
-              curExam != null ? curExam.name : '—',
-            ),
-            const SizedBox(width: 14),
-          ],
-          if (_loadingDashboard)
-            Container(
-              margin: const EdgeInsets.only(right: 6),
-              padding: EdgeInsets.symmetric(
-                horizontal: isDesktop ? 10 : 6,
-                vertical: 4,
-              ),
-              decoration: BoxDecoration(
+          Expanded(
+            child: Text(
+              '好分数成绩工作台',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
                 color: Taste.text,
-                borderRadius: BorderRadius.circular(Taste.radiusControl),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(
-                    width: 11,
-                    height: 11,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 1.6,
-                      color: Colors.white,
-                    ),
-                  ),
-                  if (isDesktop) ...[
-                    const SizedBox(width: 6),
-                    const Text(
-                      '同步中…',
-                      style: TextStyle(fontSize: 11, color: Colors.white),
-                    ),
-                  ],
-                ],
+            ),
+          ),
+          if (_loadingDashboard)
+            const Padding(
+              padding: EdgeInsets.only(right: 6),
+              child: SizedBox(
+                width: 13,
+                height: 13,
+                child: CircularProgressIndicator(strokeWidth: 1.6),
               ),
             ),
           _buildTopBarBtn(
-            label: isDesktop ? '账号登录/注册' : '加号',
+            label: '登录',
             icon: Icons.person_add_alt_outlined,
-            compact: !isDesktop,
+            compact: true,
             onTap: () => _openAuthOrRegisterModal(),
           ),
           const SizedBox(width: 5),
-          if (isDesktop)
-            _buildTopBarBtn(
-              label: '微信侧成绩',
-              icon: Icons.fact_check_outlined,
-              onTap: _openMiniScoresModal,
-            ),
-          const SizedBox(width: 5),
           _buildTopBarBtn(
-            label: isDesktop ? '刷新当前' : '刷新',
+            label: '刷新',
             icon: Icons.refresh,
-            compact: !isDesktop,
+            compact: true,
             onTap: _loadingDashboard
                 ? null
                 : () => _loadDashboardForCurrent(allowCache: false),
           ),
           const SizedBox(width: 5),
-          if (isDesktop) ...[
-            _buildTopBarBtn(
-              label: '导出凭证',
-              icon: Icons.download_outlined,
-              onTap: () => _exportCredentialFileDirect(),
-            ),
-            const SizedBox(width: 6),
-          ],
           _buildTopBarBtn(
             label: '设置',
             icon: Icons.tune,
-            compact: !isDesktop,
+            compact: true,
             onTap: _openSettingsModal,
           ),
         ],
@@ -1591,9 +1722,8 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                     _miniIconBtn(
                       label: _showInlineQuickAddAccount ? '收起' : '＋ 快速加号',
                       active: _showInlineQuickAddAccount,
-                      onTap: () => setState(() =>
-                          _showInlineQuickAddAccount =
-                              !_showInlineQuickAddAccount),
+                      onTap: () => setState(() => _showInlineQuickAddAccount =
+                          !_showInlineQuickAddAccount),
                     ),
                     _miniIconBtn(
                       label: '注册新号',
@@ -1678,9 +1808,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                           ? null
                           : _handleInlineQuickAddAccount,
                       child: Text(
-                        _inlineAddingAccount
-                            ? '正在验证并拉取学生…'
-                            : '登录并挂载该账号',
+                        _inlineAddingAccount ? '正在验证并拉取学生…' : '登录并挂载该账号',
                         style: const TextStyle(fontSize: 12),
                       ),
                     ),
@@ -1726,54 +1854,19 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
               color: Taste.raised,
               border: Border(bottom: BorderSide(color: Taste.border)),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: () => _handleSelectAccount(acc),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(
-                              acc.displayLabel,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: Taste.text,
-                              ),
-                            ),
-                            TastePill(
-                              label: acc.roleType == 1 ? '学生端' : '家长端',
-                              tone: acc.roleType == 1
-                                  ? TastePillTone.blue
-                                  : TastePillTone.positive,
-                            ),
-                            if (acc.state == 'reauth_required')
-                              const TastePill(
-                                label: '需重登',
-                                tone: TastePillTone.negative,
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          '${acc.maskedLogin} · 已绑 ${acc.students.length}/${acc.estimatedMaxQuota} 人${acc.minusOneSlotCount > 0 ? " (-1活名额×${acc.minusOneSlotCount})" : ""}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Taste.muted,
-                          ),
-                        ),
-                      ],
-                    ),
+            child: LayoutBuilder(
+              builder: (ctx, box) {
+                final compact = box.maxWidth < 420;
+                final message = Text(
+                  '${acc.maskedLogin} · 已绑 ${acc.students.length}/${acc.estimatedMaxQuota} 人${acc.minusOneSlotCount > 0 ? " (-1活名额×${acc.minusOneSlotCount})" : ""}',
+                  maxLines: compact ? 2 : 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Taste.muted,
                   ),
-                ),
-                Row(
+                );
+                final actions = Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _svgIconActionBtn(
@@ -1796,8 +1889,93 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                       onTap: () => _removeAccount(acc),
                     ),
                   ],
-                ),
-              ],
+                );
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (compact) ...[
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            acc.displayLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Taste.text,
+                            ),
+                          ),
+                          TastePill(
+                            label: acc.roleType == 1 ? '学生端' : '家长端',
+                            tone: acc.roleType == 1
+                                ? TastePillTone.blue
+                                : TastePillTone.positive,
+                          ),
+                          if (acc.state == 'reauth_required')
+                            const TastePill(
+                              label: '需重登',
+                              tone: TastePillTone.negative,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      message,
+                      const SizedBox(height: 6),
+                      Align(alignment: Alignment.centerRight, child: actions),
+                    ] else
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => _handleSelectAccount(acc),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: [
+                                      Text(
+                                        acc.displayLabel,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: Taste.text,
+                                        ),
+                                      ),
+                                      TastePill(
+                                        label:
+                                            acc.roleType == 1 ? '学生端' : '家长端',
+                                        tone: acc.roleType == 1
+                                            ? TastePillTone.blue
+                                            : TastePillTone.positive,
+                                      ),
+                                      if (acc.state == 'reauth_required')
+                                        const TastePill(
+                                          label: '需重登',
+                                          tone: TastePillTone.negative,
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 3),
+                                  message,
+                                ],
+                              ),
+                            ),
+                          ),
+                          actions,
+                        ],
+                      ),
+                  ],
+                );
+              },
             ),
           ),
 
@@ -2271,13 +2449,10 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                   color: Taste.surface,
                   border: Border(bottom: BorderSide(color: Taste.border)),
                 ),
-                child: Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 12,
-                  runSpacing: 10,
-                  children: [
-                    Column(
+                child: LayoutBuilder(
+                  builder: (ctx, box) {
+                    final compact = box.maxWidth < 420;
+                    final studentHeader = Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Wrap(
@@ -2296,12 +2471,19 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                                     const SizedBox.shrink(),
                               ),
                             ),
-                            Text(
-                              stu?.studentName ?? dash.account.displayLabel,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700,
-                                color: Taste.text,
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: compact ? box.maxWidth - 44 : 300,
+                              ),
+                              child: Text(
+                                stu?.studentName ?? dash.account.displayLabel,
+                                maxLines: compact ? 2 : 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                  color: Taste.text,
+                                ),
                               ),
                             ),
                             if (stu != null &&
@@ -2334,21 +2516,21 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                               '准考证/考号 ${stu.xuehao}',
                             '归属账号 ${dash.account.displayLabel}',
                           ].join(' · '),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Taste.muted,
-                          ),
+                          maxLines: compact ? 2 : 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              const TextStyle(fontSize: 12, color: Taste.muted),
                         ),
                       ],
-                    ),
-                    Wrap(
+                    );
+                    final headerActions = Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
                         if (exams.isNotEmpty)
                           ConstrainedBox(
                             constraints: BoxConstraints(
-                              maxWidth: isDesktop ? 250 : 225,
+                              maxWidth: compact ? box.maxWidth : 250,
                             ),
                             child: SizedBox(
                               height: 32,
@@ -2411,8 +2593,24 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                           onTap: _openClassmatesRosterModal,
                         ),
                       ],
-                    ),
-                  ],
+                    );
+                    return compact
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              studentHeader,
+                              const SizedBox(height: 10),
+                              headerActions,
+                            ],
+                          )
+                        : Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 12,
+                            runSpacing: 10,
+                            children: [studentHeader, headerActions],
+                          );
+                  },
                 ),
               ),
               _buildDividedKpiStrip(dash, curExam, prevExam, isDesktop),
@@ -2446,13 +2644,27 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 12,
-                  runSpacing: 8,
-                  children: [
-                    Wrap(
+                child: LayoutBuilder(
+                  builder: (ctx, box) {
+                    final search = SizedBox(
+                      width: box.maxWidth < 420 ? double.infinity : 200,
+                      height: 30,
+                      child: TextField(
+                        onChanged: (v) => setState(() => _examFilterQuery = v),
+                        style: const TextStyle(fontSize: 12),
+                        decoration: InputDecoration(
+                          hintText: '筛选考试名称…',
+                          prefixIcon: const Icon(Icons.search, size: 14),
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 0),
+                          border: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(Taste.radiusControl),
+                          ),
+                        ),
+                      ),
+                    );
+                    final heading = Wrap(
                       spacing: 10,
                       runSpacing: 4,
                       crossAxisAlignment: WrapCrossAlignment.center,
@@ -2475,27 +2687,26 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                           ),
                         ),
                       ],
-                    ),
-                    SizedBox(
-                      width: 200,
-                      height: 30,
-                      child: TextField(
-                        onChanged: (v) =>
-                            setState(() => _examFilterQuery = v),
-                        style: const TextStyle(fontSize: 12),
-                        decoration: InputDecoration(
-                          hintText: '筛选考试名称…',
-                          prefixIcon: const Icon(Icons.search, size: 14),
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 0),
-                          border: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(Taste.radiusControl),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                    );
+                    if (box.maxWidth < 420) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          heading,
+                          const SizedBox(height: 8),
+                          search,
+                        ],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(child: heading),
+                        const SizedBox(width: 12),
+                        search,
+                      ],
+                    );
+                  },
                 ),
               ),
               if (allSubjects.isNotEmpty)
@@ -2600,8 +2811,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                   child: LayoutBuilder(
                     builder: (ctx, box) {
                       final cols = (box.maxWidth / 220).floor().clamp(1, 5);
-                      final tileW =
-                          (box.maxWidth - (cols - 1) * 12) / cols;
+                      final tileW = (box.maxWidth - (cols - 1) * 12) / cols;
                       return Wrap(
                         spacing: 12,
                         runSpacing: 12,
@@ -2630,8 +2840,9 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
     bool isDesktop,
   ) {
     final scoreStr = curExam?.scoreS ?? '—';
-    final manfenStr =
-        (curExam != null && curExam.manfen > 0) ? '/ ${round1(curExam.manfen)}' : '';
+    final manfenStr = (curExam != null && curExam.manfen > 0)
+        ? '/ ${round1(curExam.manfen)}'
+        : '';
     String deltaText = curExam != null ? curExam.name : '暂无考试';
     Color deltaColor = Taste.muted;
     if (curExam != null &&
@@ -2728,7 +2939,8 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         children: [
           for (var i = 0; i < cells.length; i++) ...[
             if (i > 0)
-              const VerticalDivider(width: 1, thickness: 1, color: Taste.border),
+              const VerticalDivider(
+                  width: 1, thickness: 1, color: Taste.border),
             Expanded(child: cells[i]),
           ],
         ],
@@ -2832,6 +3044,11 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         subjects.length * subjColW +
         wrongColW;
 
+    final showMobile = MediaQuery.sizeOf(context).width < 860;
+    final narrow = MediaQuery.sizeOf(context).width < 420;
+    if (showMobile && narrow) {
+      return _buildMobileScoreCards(exams, subjects, selectedExam);
+    }
     return IsolatedHorizontalScroll(
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -2851,7 +3068,6 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
             horizontalInside: BorderSide(color: Taste.rule),
           ),
           children: [
-            // Header Row
             TableRow(
               decoration: const BoxDecoration(
                 color: Taste.surface,
@@ -2879,7 +3095,6 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
                 ),
               ],
             ),
-            // Data Rows
             for (var rIdx = 0; rIdx < exams.length; rIdx++)
               _buildScoreMatrixRow(
                 exams[rIdx],
@@ -2890,6 +3105,155 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildMobileScoreCards(
+    List<ExamRecord> exams,
+    List<String> subjects,
+    ExamRecord? selectedExam,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var index = 0; index < exams.length; index++)
+          _buildMobileScoreCard(
+            exams[index],
+            index + 1 < exams.length ? exams[index + 1] : null,
+            subjects,
+            selected: exams[index].examId == selectedExam?.examId,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildMobileScoreCard(
+    ExamRecord exam,
+    ExamRecord? olderExam,
+    List<String> subjects, {
+    required bool selected,
+  }) {
+    final paperBySubject = <String, PaperScore>{
+      for (final paper in exam.papers) paper.subject: paper,
+    };
+    String trend = '';
+    Color trendColor = Taste.muted;
+    if (olderExam != null &&
+        !exam.isPartial &&
+        !olderExam.isPartial &&
+        exam.score != olderExam.score) {
+      if (exam.score > olderExam.score) {
+        trend = '↑ 较上场上升';
+        trendColor = Taste.positive;
+      } else {
+        trend = '↓ 较上场下降';
+        trendColor = Taste.negative;
+      }
+    }
+    return InkWell(
+      onTap: () => _selectExamRow(exam),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected ? Taste.raised : Taste.surface,
+          borderRadius: BorderRadius.circular(Taste.radiusControl),
+          border: Border.all(
+            color: selected ? Taste.accent : Taste.border,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    exam.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Taste.text,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  formatDateMs(exam.time),
+                  style: Taste.numStyle(size: 11, color: Taste.muted),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 4,
+              children: [
+                Text(
+                  '${exam.scoreS}${exam.manfen > 0 ? '/${round1(exam.manfen)}' : ''}',
+                  style: Taste.numStyle(
+                    size: 20,
+                    weight: FontWeight.w700,
+                    color: Taste.text,
+                  ),
+                ),
+                if (trend.isNotEmpty)
+                  Text(
+                    trend,
+                    style: TextStyle(fontSize: 11, color: trendColor),
+                  ),
+                Text(
+                  '错题 ${exam.totalWrong}',
+                  style: const TextStyle(fontSize: 11, color: Taste.muted),
+                ),
+              ],
+            ),
+            if (subjects.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final subject in subjects.take(6))
+                    _buildMobileSubjectScoreChip(
+                      subject,
+                      paperBySubject[subject],
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 6),
+            const Text(
+              '点击查看考试详情与答题卡',
+              style: TextStyle(fontSize: 11, color: Taste.muted),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileSubjectScoreChip(String subject, PaperScore? paper) {
+    final value = paper == null
+        ? '未出分'
+        : '${paper.scoreS}${paper.manfen > 0 ? '/${round1(paper.manfen)}' : ''}';
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 132),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: Taste.raised,
+        borderRadius: BorderRadius.circular(Taste.radiusControl),
+        border: Border.all(color: Taste.border),
+      ),
+      child: Text(
+        '$subject $value',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 11, color: Taste.text),
       ),
     );
   }
@@ -2981,8 +3345,8 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
             alignment: Alignment.centerLeft,
             child: Text(
               formatDateMs(exam.time),
-              style: Taste.numStyle(
-                  size: compact ? 11 : 12, color: Taste.muted),
+              style:
+                  Taste.numStyle(size: compact ? 11 : 12, color: Taste.muted),
             ),
           ),
         ),
@@ -3189,26 +3553,40 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
+            LayoutBuilder(
+              builder: (ctx, box) {
+                final compact = box.maxWidth < 420;
+                final subject = Text(
                   paper.subject,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: Taste.text,
                   ),
-                ),
-                TastePill(
+                );
+                final ratioPill = TastePill(
                   label: paper.ratio != null ? '${paper.ratio}%' : '已出分',
                   tone: ratio >= 85
                       ? TastePillTone.positive
                       : (ratio >= 60
                           ? TastePillTone.blue
                           : TastePillTone.warning),
-                ),
-              ],
+                );
+                return compact
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          subject,
+                          const SizedBox(height: 4),
+                          ratioPill
+                        ],
+                      )
+                    : Row(
+                        children: [Expanded(child: subject), ratioPill],
+                      );
+              },
             ),
             const SizedBox(height: 10),
             Row(
@@ -3516,9 +3894,7 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
         ),
         DataCell(
           Text(
-            snap != null
-                ? '${snap.scoreS} / ${round1(snap.manfen)}'
-                : '—',
+            snap != null ? '${snap.scoreS} / ${round1(snap.manfen)}' : '—',
             style: Taste.numStyle(
               size: 13,
               weight: FontWeight.w700,
@@ -3825,8 +4201,8 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
           (p) => p.paperId == widget.paper.paperId,
         );
         if (curIdx >= 0) {
-          final prevIdx =
-              (curIdx - 1 + widget.exam.papers.length) % widget.exam.papers.length;
+          final prevIdx = (curIdx - 1 + widget.exam.papers.length) %
+              widget.exam.papers.length;
           widget.onSelectPaper!(widget.exam.papers[prevIdx]);
           return true;
         }
@@ -4042,8 +4418,8 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                     '−',
                     onTap: _zoomScale <= 0.65
                         ? null
-                        : () => setState(
-                            () => _zoomScale = (_zoomScale - 0.25).clamp(0.6, 2.5)),
+                        : () => setState(() =>
+                            _zoomScale = (_zoomScale - 0.25).clamp(0.6, 2.5)),
                   ),
                   const SizedBox(width: 4),
                   SizedBox(
@@ -4063,8 +4439,8 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                     '＋',
                     onTap: _zoomScale >= 2.45
                         ? null
-                        : () => setState(
-                            () => _zoomScale = (_zoomScale + 0.25).clamp(0.6, 2.5)),
+                        : () => setState(() =>
+                            _zoomScale = (_zoomScale + 0.25).clamp(0.6, 2.5)),
                   ),
                   const SizedBox(width: 4),
                   _toolBtn(
@@ -4257,16 +4633,14 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
           imageUrl: data.answerPages[pIdx],
           caption:
               '${widget.exam.name} · ${widget.paper.subject} 答题卡 第 ${pIdx + 1} / ${data.answerPages.length} 页',
-          overlay: pIdx < data.pageOverlays.length
-              ? data.pageOverlays[pIdx]
-              : null,
+          overlay:
+              pIdx < data.pageOverlays.length ? data.pageOverlays[pIdx] : null,
           initialShowOverlay: _showGradingOverlay,
           highlightedQuestionName: _highlightedQName,
         ),
     ];
 
-    final safePageIdx =
-        _activePageIndex.clamp(0, data.answerPages.length - 1);
+    final safePageIdx = _activePageIndex.clamp(0, data.answerPages.length - 1);
     final visibleIndices = (_singlePageView && data.answerPages.length > 1)
         ? <int>[safePageIdx]
         : List<int>.generate(data.answerPages.length, (idx) => idx);
@@ -4316,8 +4690,7 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
               _toolBtn(
                 _singlePageView ? '切换为连续平铺' : '切换为单张翻页',
                 active: !_singlePageView,
-                onTap: () =>
-                    setState(() => _singlePageView = !_singlePageView),
+                onTap: () => setState(() => _singlePageView = !_singlePageView),
               ),
             ],
           ),
@@ -4615,17 +4988,22 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                   color: Taste.raised,
                   border: Border(bottom: BorderSide(color: Taste.border)),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
+                child: LayoutBuilder(
+                  builder: (ctx, box) {
+                    final compact = box.maxWidth < 420;
+                    final title = Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          '第 ${q.name} 题',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Taste.text,
+                        Flexible(
+                          child: Text(
+                            '第 ${q.name} 题',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Taste.text,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -4634,16 +5012,25 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                           tone: TastePillTone.neutral,
                         ),
                       ],
-                    ),
-                    TastePill(
+                    );
+                    final score = TastePill(
                       label: '${q.scoreS} / ${round1(q.manfen)}分',
                       tone: q.isFullScore
                           ? TastePillTone.positive
                           : (q.isZeroScore
                               ? TastePillTone.negative
                               : TastePillTone.warning),
-                    ),
-                  ],
+                    );
+                    return compact
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [title, const SizedBox(height: 4), score],
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [Expanded(child: title), score],
+                          );
+                  },
                 ),
               ),
               Padding(
@@ -4682,8 +5069,7 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                             caption:
                                 '${widget.paper.subject} 第${q.name}题 · 原卷题干',
                             galleryItems: gallery,
-                            galleryIndex:
-                                indexMap['q:${q.name}:stem:$u'] ?? 0,
+                            galleryIndex: indexMap['q:${q.name}:stem:$u'] ?? 0,
                           ),
                         ),
                     ],
@@ -4707,8 +5093,7 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                             caption:
                                 '${widget.paper.subject} 第${q.name}题 · 我的作答切块',
                             galleryItems: gallery,
-                            galleryIndex:
-                                indexMap['q:${q.name}:crop:$u'] ?? 0,
+                            galleryIndex: indexMap['q:${q.name}:crop:$u'] ?? 0,
                           ),
                         ),
                     ],
@@ -4732,8 +5117,7 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                             caption:
                                 '${widget.paper.subject} 第${q.name}题 · 优秀解答',
                             galleryItems: gallery,
-                            galleryIndex:
-                                indexMap['q:${q.name}:xb:$u'] ?? 0,
+                            galleryIndex: indexMap['q:${q.name}:xb:$u'] ?? 0,
                           ),
                         ),
                     ],
@@ -4781,13 +5165,16 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
+              LayoutBuilder(
+                builder: (ctx, box) {
+                  final compact = box.maxWidth < 420;
+                  final title = Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         '第 ${q.name} 题',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
@@ -4800,16 +5187,25 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
                         tone: TastePillTone.neutral,
                       ),
                     ],
-                  ),
-                  TastePill(
+                  );
+                  final score = TastePill(
                     label: '${q.scoreS} / ${round1(q.manfen)}分',
                     tone: q.isFullScore
                         ? TastePillTone.positive
                         : (q.isZeroScore
                             ? TastePillTone.negative
                             : TastePillTone.warning),
-                  ),
-                ],
+                  );
+                  return compact
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [title, const SizedBox(height: 4), score],
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [Expanded(child: title), score],
+                        );
+                },
               ),
               if (q.type == 2 ||
                   q.myAnswer.isNotEmpty ||

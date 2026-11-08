@@ -1,5 +1,5 @@
 ﻿#define MyAppName "好分数 · 原生工作台"
-#define MyAppVersion "2.6.2"
+#define MyAppVersion "2.6.3"
 #define MyAppPublisher "HFS Native Workbench"
 #define MyAppExeName "hfs_flutter.exe"
 

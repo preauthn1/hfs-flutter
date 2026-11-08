@@ -353,13 +353,42 @@ class HfsImageClipboardAndExporter {
     VoidCallback? onOpenLightbox,
   }) async {
     final hasOverlay = overlay != null;
+    final menuWidth = math.min(
+      360.0,
+      math.max(200.0, MediaQuery.sizeOf(context).width - 24),
+    );
+    final safeDx =
+        globalPosition.dx.clamp(12.0, MediaQuery.sizeOf(context).width - 12);
+    final safeDy =
+        globalPosition.dy.clamp(12.0, MediaQuery.sizeOf(context).height - 12);
+
+    Widget menuItem(String text, IconData icon, Color color) {
+      return SizedBox(
+        width: menuWidth,
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                text,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: color),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final selected = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(
-        globalPosition.dx,
-        globalPosition.dy,
-        globalPosition.dx + 1,
-        globalPosition.dy + 1,
+        safeDx,
+        safeDy,
+        safeDx + 1,
+        safeDy + 1,
       ),
       color: Colors.white,
       elevation: 4,
@@ -370,102 +399,64 @@ class HfsImageClipboardAndExporter {
       items: <PopupMenuEntry<String>>[
         PopupMenuItem<String>(
           value: 'copy_current',
-          height: 36,
-          child: Row(
-            children: [
-              const Icon(Icons.copy_all_outlined,
-                  size: 16, color: Color(0xFF131416)),
-              const SizedBox(width: 8),
-              Text(
-                hasOverlay && showOverlay ? '复制图片（含红笔批改层）' : '复制图片到剪贴板',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF131416)),
-              ),
-            ],
+          height: 48,
+          child: menuItem(
+            hasOverlay && showOverlay ? '复制图片（含红笔批改层）' : '复制图片到剪贴板',
+            Icons.copy_all_outlined,
+            const Color(0xFF131416),
           ),
         ),
         if (hasOverlay && showOverlay)
-          const PopupMenuItem<String>(
+          PopupMenuItem<String>(
             value: 'copy_raw',
-            height: 36,
-            child: Row(
-              children: [
-                Icon(Icons.image_outlined, size: 16, color: Color(0xFF5D5F60)),
-                SizedBox(width: 8),
-                Text(
-                  '复制纯原图（不含批改框）',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF131416)),
-                ),
-              ],
+            height: 48,
+            child: menuItem(
+              '复制纯原图（不含批改框）',
+              Icons.image_outlined,
+              const Color(0xFF5D5F60),
             ),
           ),
         const PopupMenuDivider(height: 6),
         PopupMenuItem<String>(
           value: 'download_current',
-          height: 36,
-          child: Row(
-            children: [
-              const Icon(Icons.download_outlined,
-                  size: 16, color: Color(0xFF1B6C80)),
-              const SizedBox(width: 8),
-              Text(
-                hasOverlay && showOverlay
-                    ? '保存至下载目录（含批改层 .png）'
-                    : '保存图片至下载目录 (.png)',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF1B6C80),
-                ),
-              ),
-            ],
+          height: 48,
+          child: menuItem(
+            hasOverlay && showOverlay
+                ? '保存至下载目录（含批改层 .png）'
+                : '保存图片至下载目录 (.png)',
+            Icons.download_outlined,
+            const Color(0xFF1B6C80),
           ),
         ),
         if (hasOverlay && showOverlay)
-          const PopupMenuItem<String>(
+          PopupMenuItem<String>(
             value: 'download_raw',
-            height: 36,
-            child: Row(
-              children: [
-                Icon(Icons.file_download_outlined,
-                    size: 16, color: Color(0xFF5D5F60)),
-                SizedBox(width: 8),
-                Text(
-                  '保存纯原图至下载目录 (.png)',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF131416)),
-                ),
-              ],
+            height: 48,
+            child: menuItem(
+              '保存纯原图至下载目录 (.png)',
+              Icons.file_download_outlined,
+              const Color(0xFF5D5F60),
             ),
           ),
         if (Platform.isWindows)
-          const PopupMenuItem<String>(
+          PopupMenuItem<String>(
             value: 'save_as_dialog',
-            height: 36,
-            child: Row(
-              children: [
-                Icon(Icons.folder_open_outlined,
-                    size: 16, color: Color(0xFF131416)),
-                SizedBox(width: 8),
-                Text(
-                  '图片另存为… (选择文件夹)',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF131416)),
-                ),
-              ],
+            height: 48,
+            child: menuItem(
+              '图片另存为… (选择文件夹)',
+              Icons.folder_open_outlined,
+              const Color(0xFF131416),
             ),
           ),
         if (onOpenLightbox != null) ...[
           const PopupMenuDivider(height: 6),
-          const PopupMenuItem<String>(
+          PopupMenuItem<String>(
             value: 'lightbox',
-            height: 36,
-            child: Row(
-              children: [
-                Icon(Icons.zoom_out_map, size: 16, color: Color(0xFF131416)),
-                SizedBox(width: 8),
-                Text(
-                  '全屏无损放大阅卷 (支持 ←/→ 切图)',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF131416)),
-                ),
-              ],
+            height: 48,
+            child: menuItem(
+              '全屏无损放大阅卷 (支持 ←/→ 切图)',
+              Icons.zoom_out_map,
+              const Color(0xFF131416),
             ),
           ),
         ],
@@ -841,13 +832,12 @@ class _AnswerSheetCanvasState extends State<AnswerSheetCanvas> {
                     },
                   );
                 } else if (event is PointerScrollEvent) {
-                  final pressed =
-                      HardwareKeyboard.instance.logicalKeysPressed;
+                  final pressed = HardwareKeyboard.instance.logicalKeysPressed;
                   final isCtrlOrMeta =
                       pressed.contains(LogicalKeyboardKey.controlLeft) ||
-                      pressed.contains(LogicalKeyboardKey.controlRight) ||
-                      pressed.contains(LogicalKeyboardKey.metaLeft) ||
-                      pressed.contains(LogicalKeyboardKey.metaRight);
+                          pressed.contains(LogicalKeyboardKey.controlRight) ||
+                          pressed.contains(LogicalKeyboardKey.metaLeft) ||
+                          pressed.contains(LogicalKeyboardKey.metaRight);
                   if (isCtrlOrMeta && event.scrollDelta.dy != 0) {
                     GestureBinding.instance.pointerSignalResolver.register(
                       event,
@@ -1039,11 +1029,14 @@ class _OssCropImageState extends State<OssCropImage> {
       );
     }
 
-    Widget imgWidget = Image.memory(
-      _bytes!,
-      fit: BoxFit.contain,
-      alignment: Alignment.centerLeft,
-      gaplessPlayback: true,
+    Widget imgWidget = SizedBox(
+      width: double.infinity,
+      child: Image.memory(
+        _bytes!,
+        fit: BoxFit.contain,
+        alignment: Alignment.centerLeft,
+        gaplessPlayback: true,
+      ),
     );
     if (widget.maxHeight != null) {
       imgWidget = ConstrainedBox(
@@ -1266,8 +1259,7 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
       return true;
     }
     // 0 -> Reset zoom
-    if (key == LogicalKeyboardKey.digit0 ||
-        key == LogicalKeyboardKey.numpad0) {
+    if (key == LogicalKeyboardKey.digit0 || key == LogicalKeyboardKey.numpad0) {
       _resetTransform();
       return true;
     }
@@ -1298,10 +1290,10 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
   Offset _clampOffset(Offset candidate, double scale) {
     final scaledW = _fittedImageSize.width * scale;
     final scaledH = _fittedImageSize.height * scale;
-    final maxPanX =
-        math.max(_viewportSize.width * 0.35, (scaledW - _viewportSize.width) / 2.0 + 140.0);
-    final maxPanY =
-        math.max(_viewportSize.height * 0.35, (scaledH - _viewportSize.height) / 2.0 + 140.0);
+    final maxPanX = math.max(_viewportSize.width * 0.35,
+        (scaledW - _viewportSize.width) / 2.0 + 140.0);
+    final maxPanY = math.max(_viewportSize.height * 0.35,
+        (scaledH - _viewportSize.height) / 2.0 + 140.0);
     return Offset(
       candidate.dx.clamp(-maxPanX, maxPanX),
       candidate.dy.clamp(-maxPanY, maxPanY),
@@ -1316,7 +1308,8 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
       return;
     }
     final oldScale = _scale;
-    final center = Offset(_viewportSize.width / 2.0, _viewportSize.height / 2.0);
+    final center =
+        Offset(_viewportSize.width / 2.0, _viewportSize.height / 2.0);
     final anchor = focalPoint ?? center;
     final ratio = newScale / math.max(0.1, oldScale);
     // Exact center-relative focal-point invariance:
@@ -1723,209 +1716,212 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
               ),
             ),
 
-          // Main Interactive Stage
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
-                  )
-                : (_error != null || _decoded == null || _bytes == null)
-                    ? Center(
-                        child: Text(
-                          _error ?? '加载失败',
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      )
-                    : LayoutBuilder(
-                        builder: (ctx, box) {
-                          _viewportSize = Size(box.maxWidth, box.maxHeight);
-                          final img = _decoded!;
-                          final aspect =
-                              img.width / math.max(1.0, img.height.toDouble());
-                          final availW = math.max(120.0, box.maxWidth - 48.0);
-                          final availH = math.max(120.0, box.maxHeight - 36.0);
-                          double fitW = availW;
-                          double fitH = fitW / aspect;
-                          if (fitH > availH) {
-                            fitH = availH;
-                            fitW = fitH * aspect;
-                          }
-                          _fittedImageSize = Size(fitW, fitH);
+            // Main Interactive Stage
+            Expanded(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    )
+                  : (_error != null || _decoded == null || _bytes == null)
+                      ? Center(
+                          child: Text(
+                            _error ?? '加载失败',
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        )
+                      : LayoutBuilder(
+                          builder: (ctx, box) {
+                            _viewportSize = Size(box.maxWidth, box.maxHeight);
+                            final img = _decoded!;
+                            final aspect = img.width /
+                                math.max(1.0, img.height.toDouble());
+                            final availW = math.max(120.0, box.maxWidth - 48.0);
+                            final availH =
+                                math.max(120.0, box.maxHeight - 36.0);
+                            double fitW = availW;
+                            double fitH = fitW / aspect;
+                            if (fitH > availH) {
+                              fitH = availH;
+                              fitW = fitH * aspect;
+                            }
+                            _fittedImageSize = Size(fitW, fitH);
 
-                          return Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              Listener(
-                                behavior: HitTestBehavior.opaque,
-                                onPointerPanZoomStart: (event) {
-                                  _panZoomBaseScale = _scale;
-                                },
-                                onPointerPanZoomUpdate: (event) {
-                                  // 1. Apply 2-finger trackpad pan delta immediately
-                                  if (event.localPanDelta != Offset.zero) {
-                                    _offset = _clampOffset(
-                                      _offset + event.localPanDelta,
-                                      _scale,
-                                    );
-                                  }
-                                  // 2. Apply focal-anchored pinch zoom around stationary cursor
-                                  if ((event.scale - 1.0).abs() > 0.003) {
-                                    _setScale(
-                                      _panZoomBaseScale * event.scale,
-                                      focalPoint: event.localPosition,
-                                    );
-                                  } else if (event.localPanDelta !=
-                                      Offset.zero) {
-                                    setState(() {});
-                                  }
-                                },
-                                onPointerSignal: (event) {
-                                  if (event is PointerScaleEvent) {
-                                    GestureBinding
-                                        .instance.pointerSignalResolver
-                                        .register(event, (resolved) {
-                                      if (resolved is PointerScaleEvent) {
-                                        _setScale(
-                                          _scale * resolved.scale,
-                                          focalPoint: resolved.localPosition,
-                                        );
-                                      }
-                                    });
-                                  } else if (event is PointerScrollEvent) {
-                                    GestureBinding
-                                        .instance.pointerSignalResolver
-                                        .register(event, (resolved) {
-                                      if (resolved is PointerScrollEvent) {
-                                        final pressed = HardwareKeyboard
-                                            .instance.logicalKeysPressed;
-                                        final isCtrlOrMeta = pressed.contains(
-                                              LogicalKeyboardKey.controlLeft,
-                                            ) ||
-                                            pressed.contains(
-                                              LogicalKeyboardKey.controlRight,
-                                            ) ||
-                                            pressed.contains(
-                                              LogicalKeyboardKey.metaLeft,
-                                            ) ||
-                                            pressed.contains(
-                                              LogicalKeyboardKey.metaRight,
-                                            );
-                                        if (resolved.kind ==
-                                                PointerDeviceKind.trackpad &&
-                                            !isCtrlOrMeta) {
-                                          // Legacy trackpad scroll -> 2D pan
-                                          setState(() {
-                                            _offset = _clampOffset(
-                                              _offset - resolved.scrollDelta,
-                                              _scale,
-                                            );
-                                          });
-                                        } else if (resolved.scrollDelta.dy !=
-                                            0) {
-                                          final factor = math
-                                              .exp(
-                                                -resolved.scrollDelta.dy /
-                                                    260.0,
-                                              )
-                                              .clamp(0.75, 1.35);
-                                          _setScale(
-                                            _scale * factor,
-                                            focalPoint: resolved.localPosition,
-                                          );
-                                        }
-                                      }
-                                    });
-                                  }
-                                },
-                                child: GestureDetector(
+                            return Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Listener(
                                   behavior: HitTestBehavior.opaque,
-                                  supportedDevices: const <PointerDeviceKind>{
-                                    PointerDeviceKind.touch,
-                                    PointerDeviceKind.mouse,
-                                    PointerDeviceKind.stylus,
+                                  onPointerPanZoomStart: (event) {
+                                    _panZoomBaseScale = _scale;
                                   },
-                                  onDoubleTapDown: (details) {
-                                    if (_scale > 1.25) {
-                                      _resetTransform();
-                                    } else {
-                                      _setScale(
-                                        2.2,
-                                        focalPoint: details.localPosition,
-                                      );
-                                    }
-                                  },
-                                  onSecondaryTapDown: (details) {
-                                    if (_bytes == null) return;
-                                    HfsImageClipboardAndExporter
-                                        .showImageContextMenu(
-                                      context: context,
-                                      globalPosition: details.globalPosition,
-                                      rawBytes: _bytes!,
-                                      label: item.caption,
-                                      decodedImage: _decoded,
-                                      overlay: item.overlay,
-                                      showOverlay: _showOverlay,
-                                      highlightedQuestionName:
-                                          item.highlightedQuestionName,
-                                    );
-                                  },
-                                  onScaleStart: (details) {
-                                    _touchPinchBaseScale = _scale;
-                                    _touchLastFocal = details.localFocalPoint;
-                                  },
-                                  onScaleUpdate: (details) {
-                                    final delta =
-                                        details.localFocalPoint - _touchLastFocal;
-                                    _touchLastFocal = details.localFocalPoint;
-                                    if (delta != Offset.zero) {
+                                  onPointerPanZoomUpdate: (event) {
+                                    // 1. Apply 2-finger trackpad pan delta immediately
+                                    if (event.localPanDelta != Offset.zero) {
                                       _offset = _clampOffset(
-                                        _offset + delta,
+                                        _offset + event.localPanDelta,
                                         _scale,
                                       );
                                     }
-                                    if ((details.scale - 1.0).abs() > 0.01) {
+                                    // 2. Apply focal-anchored pinch zoom around stationary cursor
+                                    if ((event.scale - 1.0).abs() > 0.003) {
                                       _setScale(
-                                        _touchPinchBaseScale * details.scale,
-                                        focalPoint: details.localFocalPoint,
+                                        _panZoomBaseScale * event.scale,
+                                        focalPoint: event.localPosition,
                                       );
-                                    } else if (delta != Offset.zero) {
+                                    } else if (event.localPanDelta !=
+                                        Offset.zero) {
                                       setState(() {});
                                     }
                                   },
-                                  child: ClipRect(
-                                    child: Center(
-                                      child: Transform.translate(
-                                        offset: _offset,
-                                        child: Transform.scale(
-                                          scale: _scale,
-                                          alignment: Alignment.center,
-                                          child: Container(
-                                            width: fitW,
-                                            height: fitH,
-                                            color: Colors.white,
-                                            child: Stack(
-                                              fit: StackFit.expand,
-                                              children: [
-                                                Image.memory(
-                                                  _bytes!,
-                                                  fit: BoxFit.contain,
-                                                  gaplessPlayback: true,
-                                                ),
-                                                if (_showOverlay &&
-                                                    item.overlay != null)
-                                                  CustomPaint(
-                                                    painter:
-                                                        _GradingOverlayPainter(
-                                                      imageSize: Size(
-                                                        img.width.toDouble(),
-                                                        img.height.toDouble(),
-                                                      ),
-                                                      overlay: item.overlay!,
-                                                      highlightedQuestionName:
-                                                          item.highlightedQuestionName,
-                                                    ),
+                                  onPointerSignal: (event) {
+                                    if (event is PointerScaleEvent) {
+                                      GestureBinding
+                                          .instance.pointerSignalResolver
+                                          .register(event, (resolved) {
+                                        if (resolved is PointerScaleEvent) {
+                                          _setScale(
+                                            _scale * resolved.scale,
+                                            focalPoint: resolved.localPosition,
+                                          );
+                                        }
+                                      });
+                                    } else if (event is PointerScrollEvent) {
+                                      GestureBinding
+                                          .instance.pointerSignalResolver
+                                          .register(event, (resolved) {
+                                        if (resolved is PointerScrollEvent) {
+                                          final pressed = HardwareKeyboard
+                                              .instance.logicalKeysPressed;
+                                          final isCtrlOrMeta = pressed.contains(
+                                                LogicalKeyboardKey.controlLeft,
+                                              ) ||
+                                              pressed.contains(
+                                                LogicalKeyboardKey.controlRight,
+                                              ) ||
+                                              pressed.contains(
+                                                LogicalKeyboardKey.metaLeft,
+                                              ) ||
+                                              pressed.contains(
+                                                LogicalKeyboardKey.metaRight,
+                                              );
+                                          if (resolved.kind ==
+                                                  PointerDeviceKind.trackpad &&
+                                              !isCtrlOrMeta) {
+                                            // Legacy trackpad scroll -> 2D pan
+                                            setState(() {
+                                              _offset = _clampOffset(
+                                                _offset - resolved.scrollDelta,
+                                                _scale,
+                                              );
+                                            });
+                                          } else if (resolved.scrollDelta.dy !=
+                                              0) {
+                                            final factor = math
+                                                .exp(
+                                                  -resolved.scrollDelta.dy /
+                                                      260.0,
+                                                )
+                                                .clamp(0.75, 1.35);
+                                            _setScale(
+                                              _scale * factor,
+                                              focalPoint:
+                                                  resolved.localPosition,
+                                            );
+                                          }
+                                        }
+                                      });
+                                    }
+                                  },
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    supportedDevices: const <PointerDeviceKind>{
+                                      PointerDeviceKind.touch,
+                                      PointerDeviceKind.mouse,
+                                      PointerDeviceKind.stylus,
+                                    },
+                                    onDoubleTapDown: (details) {
+                                      if (_scale > 1.25) {
+                                        _resetTransform();
+                                      } else {
+                                        _setScale(
+                                          2.2,
+                                          focalPoint: details.localPosition,
+                                        );
+                                      }
+                                    },
+                                    onSecondaryTapDown: (details) {
+                                      if (_bytes == null) return;
+                                      HfsImageClipboardAndExporter
+                                          .showImageContextMenu(
+                                        context: context,
+                                        globalPosition: details.globalPosition,
+                                        rawBytes: _bytes!,
+                                        label: item.caption,
+                                        decodedImage: _decoded,
+                                        overlay: item.overlay,
+                                        showOverlay: _showOverlay,
+                                        highlightedQuestionName:
+                                            item.highlightedQuestionName,
+                                      );
+                                    },
+                                    onScaleStart: (details) {
+                                      _touchPinchBaseScale = _scale;
+                                      _touchLastFocal = details.localFocalPoint;
+                                    },
+                                    onScaleUpdate: (details) {
+                                      final delta = details.localFocalPoint -
+                                          _touchLastFocal;
+                                      _touchLastFocal = details.localFocalPoint;
+                                      if (delta != Offset.zero) {
+                                        _offset = _clampOffset(
+                                          _offset + delta,
+                                          _scale,
+                                        );
+                                      }
+                                      if ((details.scale - 1.0).abs() > 0.01) {
+                                        _setScale(
+                                          _touchPinchBaseScale * details.scale,
+                                          focalPoint: details.localFocalPoint,
+                                        );
+                                      } else if (delta != Offset.zero) {
+                                        setState(() {});
+                                      }
+                                    },
+                                    child: ClipRect(
+                                      child: Center(
+                                        child: Transform.translate(
+                                          offset: _offset,
+                                          child: Transform.scale(
+                                            scale: _scale,
+                                            alignment: Alignment.center,
+                                            child: Container(
+                                              width: fitW,
+                                              height: fitH,
+                                              color: Colors.white,
+                                              child: Stack(
+                                                fit: StackFit.expand,
+                                                children: [
+                                                  Image.memory(
+                                                    _bytes!,
+                                                    fit: BoxFit.contain,
+                                                    gaplessPlayback: true,
                                                   ),
-                                              ],
+                                                  if (_showOverlay &&
+                                                      item.overlay != null)
+                                                    CustomPaint(
+                                                      painter:
+                                                          _GradingOverlayPainter(
+                                                        imageSize: Size(
+                                                          img.width.toDouble(),
+                                                          img.height.toDouble(),
+                                                        ),
+                                                        overlay: item.overlay!,
+                                                        highlightedQuestionName:
+                                                            item.highlightedQuestionName,
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -1933,65 +1929,64 @@ class _OssLightboxDialogState extends State<_OssLightboxDialog> {
                                     ),
                                   ),
                                 ),
-                              ),
 
-                              // Floating Left / Right Gallery Navigation Arrows
-                              if (totalCount > 1) ...[
-                                Positioned(
-                                  left: 16,
-                                  top: 0,
-                                  bottom: 0,
-                                  child: Center(
-                                    child: Material(
-                                      color: const Color(0xB8131416),
-                                      shape: const CircleBorder(
-                                        side: BorderSide(
-                                          color: Color(0xFF3E4044),
+                                // Floating Left / Right Gallery Navigation Arrows
+                                if (totalCount > 1) ...[
+                                  Positioned(
+                                    left: 16,
+                                    top: 0,
+                                    bottom: 0,
+                                    child: Center(
+                                      child: Material(
+                                        color: const Color(0xB8131416),
+                                        shape: const CircleBorder(
+                                          side: BorderSide(
+                                            color: Color(0xFF3E4044),
+                                          ),
                                         ),
-                                      ),
-                                      child: IconButton(
-                                        tooltip: '上一张 (←)',
-                                        onPressed: () => _switchGalleryIndex(
-                                            _currentIndex - 1),
-                                        icon: const Icon(
-                                          Icons.chevron_left,
-                                          color: Colors.white,
-                                          size: 26,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  right: 16,
-                                  top: 0,
-                                  bottom: 0,
-                                  child: Center(
-                                    child: Material(
-                                      color: const Color(0xB8131416),
-                                      shape: const CircleBorder(
-                                        side: BorderSide(
-                                          color: Color(0xFF3E4044),
-                                        ),
-                                      ),
-                                      child: IconButton(
-                                        tooltip: '下一张 (→)',
-                                        onPressed: () => _switchGalleryIndex(
-                                            _currentIndex + 1),
-                                        icon: const Icon(
-                                          Icons.chevron_right,
-                                          color: Colors.white,
-                                          size: 26,
+                                        child: IconButton(
+                                          tooltip: '上一张 (←)',
+                                          onPressed: () => _switchGalleryIndex(
+                                              _currentIndex - 1),
+                                          icon: const Icon(
+                                            Icons.chevron_left,
+                                            color: Colors.white,
+                                            size: 26,
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
+                                  Positioned(
+                                    right: 16,
+                                    top: 0,
+                                    bottom: 0,
+                                    child: Center(
+                                      child: Material(
+                                        color: const Color(0xB8131416),
+                                        shape: const CircleBorder(
+                                          side: BorderSide(
+                                            color: Color(0xFF3E4044),
+                                          ),
+                                        ),
+                                        child: IconButton(
+                                          tooltip: '下一张 (→)',
+                                          onPressed: () => _switchGalleryIndex(
+                                              _currentIndex + 1),
+                                          icon: const Icon(
+                                            Icons.chevron_right,
+                                            color: Colors.white,
+                                            size: 26,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ],
-                            ],
-                          );
-                        },
-                      ),
+                            );
+                          },
+                        ),
             ),
           ],
         ),
@@ -2021,6 +2016,7 @@ class _GradingOverlayPainter extends CustomPainter {
     if (imageSize.width <= 0 || imageSize.height <= 0) return;
     final sx = size.width / imageSize.width;
     final sy = size.height / imageSize.height;
+    final overlayScale = math.min(sx, sy);
 
     // 1. Objective choices
     for (final obj in overlay.objectives) {
@@ -2029,12 +2025,12 @@ class _GradingOverlayPainter extends CustomPainter {
       final rect = Rect.fromLTWH(
         obj.x * sx,
         obj.y * sy,
-        math.max(18 * sx, obj.w * sx),
-        math.max(14 * sy, obj.h * sy),
+        obj.w * sx,
+        obj.h * sy,
       );
       if (isHighlighted) {
         canvas.drawRect(
-          rect.inflate(4 * sx),
+          rect.inflate(4 * overlayScale),
           Paint()
             ..color = _teal.withValues(alpha: 0.25)
             ..style = PaintingStyle.fill,
@@ -2044,7 +2040,7 @@ class _GradingOverlayPainter extends CustomPainter {
         final stroke = Paint()
           ..color = _green.withValues(alpha: 0.88)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(1.4, 2.0 * sx);
+          ..strokeWidth = 2.0 * overlayScale;
         canvas.drawRect(rect, stroke);
       } else {
         final fill = Paint()
@@ -2053,18 +2049,24 @@ class _GradingOverlayPainter extends CustomPainter {
         final stroke = Paint()
           ..color = _red.withValues(alpha: 0.94)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(1.6, 2.4 * sx);
+          ..strokeWidth = 2.4 * overlayScale;
         canvas.drawRect(rect, fill);
         canvas.drawRect(rect, stroke);
 
         if (obj.stdAnswer.isNotEmpty) {
-          _drawText(
-            canvas,
+          final boundedText = _layoutText(
             '✓${obj.stdAnswer}',
-            Offset(rect.right + 3 * sx, rect.top - 1 * sy),
             color: _red,
-            fontSize: math.max(9.5, 16 * sx),
+            fontSize: 16 * overlayScale,
             fontWeight: FontWeight.w700,
+          );
+          final textLeft = math.min(
+            math.max(2.0, rect.right + 3 * overlayScale),
+            math.max(2.0, size.width - boundedText.width - 2),
+          );
+          boundedText.paint(
+            canvas,
+            Offset(textLeft, math.max(2.0, rect.top - 1 * overlayScale)),
           );
         }
       }
@@ -2076,16 +2078,18 @@ class _GradingOverlayPainter extends CustomPainter {
       final by = blk.y * sy;
       final bw = blk.w * sx;
       final bh = blk.h * sy;
-      final isFull =
-          blk.manfen > 0 && (blk.score - blk.manfen).abs() < 0.01;
+      final isFull = blk.manfen > 0 && (blk.score - blk.manfen).abs() < 0.01;
       final isZero = blk.score <= 0.001;
       final isHighlighted = highlightedQuestionName != null &&
           blk.qNames.contains(highlightedQuestionName);
-      final color = isHighlighted
-          ? _teal
-          : (isFull ? _green : (isZero ? _red : _amber));
+      final color =
+          isHighlighted ? _teal : (isFull ? _green : (isZero ? _red : _amber));
 
-      final rect = Rect.fromLTWH(bx, by, bw, bh);
+      final paintTop = math.max(0.0, math.min(size.height, by));
+      final paintLeft = math.max(0.0, math.min(size.width, bx));
+      final paintRight = math.max(paintLeft, math.min(size.width, bx + bw));
+      final paintBottom = math.max(paintTop, math.min(size.height, by + bh));
+      final rect = Rect.fromLTRB(paintLeft, paintTop, paintRight, paintBottom);
       if (isHighlighted) {
         canvas.drawRect(
           rect,
@@ -2097,43 +2101,55 @@ class _GradingOverlayPainter extends CustomPainter {
       final borderPaint = Paint()
         ..color = color.withValues(alpha: isHighlighted ? 0.95 : 0.6)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(isHighlighted ? 2.2 : 1.2, 2.0 * sx);
+        ..strokeWidth = 2.0 * overlayScale;
       canvas.drawRect(rect, borderPaint);
 
       final qLabel = blk.qNames.join('/');
-      final detail = blk.itemScores.length > 1
-          ? ' (${blk.itemScores.join('+')})'
-          : '';
+      final detail =
+          blk.itemScores.length > 1 ? ' (${blk.itemScores.join('+')})' : '';
       final badgeText =
           '第$qLabel题: +${round2(blk.score)} / ${round2(blk.manfen)}分$detail';
 
-      final tp = _layoutText(
+      final badgeTextPainter = _layoutText(
         badgeText,
         color: Colors.white,
-        fontSize: math.max(10.0, 20.0 * sx),
+        fontSize: 20.0 * overlayScale,
         fontWeight: FontWeight.w700,
       );
-      final padX = math.max(5.0, 10.0 * sx);
-      final padY = math.max(2.5, 5.0 * sy);
-      final boxW = tp.width + padX * 2;
-      final boxH = tp.height + padY * 2;
+      final padX = 10.0 * overlayScale;
+      final padY = 5.0 * overlayScale;
+      final maxBadgeW = math.max(8.0, size.width - 4.0);
+      final boxW = math.min(
+        maxBadgeW,
+        badgeTextPainter.width + padX * 2,
+      );
+      final boxH = badgeTextPainter.height + padY * 2;
       final badgeTop = math.max(2.0, by - boxH - 2 * sy);
-      final badgeLeft = math.min(size.width - boxW - 2, math.max(2.0, bx));
+      final badgeLeft = math.min(
+        math.max(2.0, bx),
+        math.max(2.0, size.width - boxW - 2),
+      );
 
       final rrect = RRect.fromRectAndRadius(
         Rect.fromLTWH(badgeLeft, badgeTop, boxW, boxH),
-        Radius.circular(math.max(3.0, 5.0 * sx)),
+        Radius.circular(5.0 * overlayScale),
       );
       canvas.drawRRect(
         rrect,
         Paint()..color = color.withValues(alpha: 0.94),
       );
-      tp.paint(canvas, Offset(badgeLeft + padX, badgeTop + padY));
+      badgeTextPainter.paint(
+        canvas,
+        Offset(badgeLeft + padX, badgeTop + padY),
+      );
 
       if (blk.drawScore) {
-        final stampX = math.min(
-          size.width - 70 * sx,
-          bx + math.min(bw * 0.72, bw - 80 * sx),
+        final stampX = math.max(
+          2.0,
+          math.min(
+            size.width - 2.0,
+            bx + math.min(bw * 0.72, bw - 80 * overlayScale),
+          ),
         );
         final stampY = by + math.min(36 * sy, bh * 0.25);
         _drawText(
@@ -2141,7 +2157,7 @@ class _GradingOverlayPainter extends CustomPainter {
           '+${round2(blk.score)}',
           Offset(stampX, stampY),
           color: _red.withValues(alpha: 0.85),
-          fontSize: math.max(15.0, 44.0 * sx),
+          fontSize: 44.0 * overlayScale,
           fontWeight: FontWeight.w700,
         );
       }
@@ -2149,9 +2165,10 @@ class _GradingOverlayPainter extends CustomPainter {
       for (final rm in blk.remarks) {
         final rx = (blk.x + rm.x) * sx;
         final ry = (blk.y + rm.y) * sy;
-        final rw = math.max(20.0 * sx, rm.w * sx);
-        final rh = math.max(16.0 * sy, rm.h * sy);
-        _drawRemarkMark(canvas, rm.type, rx, ry, rw, rh, rm.content, sx);
+        final rw = rm.w * sx;
+        final rh = rm.h * sy;
+        _drawRemarkMark(
+            canvas, rm.type, rx, ry, rw, rh, rm.content, overlayScale);
       }
     }
   }
@@ -2164,12 +2181,12 @@ class _GradingOverlayPainter extends CustomPainter {
     double w,
     double h,
     String content,
-    double sx,
+    double scale,
   ) {
     final stroke = Paint()
       ..color = _red.withValues(alpha: 0.88)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(1.8, 3.6 * sx)
+      ..strokeWidth = 3.6 * scale
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
@@ -2198,7 +2215,7 @@ class _GradingOverlayPainter extends CustomPainter {
         content,
         Offset(x, y),
         color: _red.withValues(alpha: 0.9),
-        fontSize: math.max(11.0, 24.0 * sx),
+        fontSize: 24.0 * scale,
         fontWeight: FontWeight.w700,
       );
     }

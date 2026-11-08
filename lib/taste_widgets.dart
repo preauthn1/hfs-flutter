@@ -80,11 +80,13 @@ enum TastePillTone { neutral, positive, negative, warning, blue }
 class TastePill extends StatelessWidget {
   final String label;
   final TastePillTone tone;
+  final int maxLines;
 
   const TastePill({
     super.key,
     required this.label,
     this.tone = TastePillTone.neutral,
+    this.maxLines = 1,
   });
 
   @override
@@ -122,7 +124,7 @@ class TastePill extends StatelessWidget {
       ),
       child: Text(
         label,
-        maxLines: 1,
+        maxLines: maxLines,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontFamily: Taste.fontFamily,
@@ -194,9 +196,11 @@ class _MiniScoresDialogState extends State<MiniScoresDialog> {
                   ? Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(_error!, style: const TextStyle(color: Taste.negative)),
+                        Text(_error!,
+                            style: const TextStyle(color: Taste.negative)),
                         const SizedBox(height: 12),
-                        OutlinedButton(onPressed: _load, child: const Text('重试')),
+                        OutlinedButton(
+                            onPressed: _load, child: const Text('重试')),
                       ],
                     )
                   : _buildReport(_report!),
@@ -215,7 +219,8 @@ class _MiniScoresDialogState extends State<MiniScoresDialog> {
             Expanded(
               child: Text(
                 '微信侧成绩读取 · $studentLabel',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
             ),
             IconButton(
@@ -254,6 +259,7 @@ class _MiniScoresDialogState extends State<MiniScoresDialog> {
     );
   }
 }
+
 /// Unified Auth / Register / Forgot-Password Panel (works standalone or inside a dialog)
 class HfsAuthPanel extends StatefulWidget {
   final HfsUpstreamClient client;
@@ -496,7 +502,7 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
         );
       }
 
-    final id = widget.reauthAccount?.id ??
+      final id = widget.reauthAccount?.id ??
           HfsUpstreamClient.accountIdFor(login, _roleType);
       final acc = HfsAccount(
         id: id,
@@ -546,9 +552,8 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
       if (!mounted) return;
       setState(() {
         _miniRelated = result;
-        _selectedMiniUserId = result.users.isNotEmpty
-            ? result.users.first.userId
-            : null;
+        _selectedMiniUserId =
+            result.users.isNotEmpty ? result.users.first.userId : null;
         _miniDiscovering = false;
         _infoText = result.users.isEmpty
             ? '该微信/手机号没有关联的好分数账号'
@@ -669,449 +674,529 @@ class _HfsAuthPanelState extends State<HfsAuthPanel> {
                 borderRadius: BorderRadius.circular(Taste.radiusCard),
                 border: Border.all(color: Taste.border),
               ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (!isReauth && !widget.isDialog) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(Taste.radiusControl),
-              child: Container(
-                height: 118,
-                decoration: BoxDecoration(
-                  color: Taste.raised,
-                  border: Border.all(color: Taste.border),
-                  borderRadius: BorderRadius.circular(Taste.radiusControl),
-                ),
-                child: Image.asset(
-                  'assets/images/hero_auth_banner.png',
-                  fit: BoxFit.cover,
-                  errorBuilder: (ctx, err, st) => const SizedBox.shrink(),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-          Row(
-            children: [
-              Container(
-                width: 30,
-                height: 30,
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  color: Taste.accent,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Image.asset(
-                  'assets/images/app_logo.png',
-                  fit: BoxFit.cover,
-                  errorBuilder: (ctx, err, st) => const Center(
-                    child: Text(
-                      'HFS',
-                      style: TextStyle(
-                        fontFamily: Taste.fontFamily,
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (!isReauth && !widget.isDialog) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(Taste.radiusControl),
+                child: Container(
+                  height: 118,
+                  decoration: BoxDecoration(
+                    color: Taste.raised,
+                    border: Border.all(color: Taste.border),
+                    borderRadius: BorderRadius.circular(Taste.radiusControl),
+                  ),
+                  child: Image.asset(
+                    'assets/images/hero_auth_banner.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (ctx, err, st) => const SizedBox.shrink(),
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  isReauth
-                      ? '重连账号 · ${widget.reauthAccount!.displayLabel}'
-                      : (_mode == 0
-                          ? '连接好分数官方账号'
-                          : (_mode == 1 ? '注册好分数新账号' : '短信找回好分数密码')),
-                  style: const TextStyle(
-                    fontFamily: Taste.fontFamily,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Taste.text,
+              const SizedBox(height: 12),
+            ],
+            Row(
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: Taste.accent,
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                ),
-              ),
-              if (widget.isDialog)
-                IconButton(
-                  icon: const Icon(Icons.close, size: 18),
-                  onPressed:
-                      _busy ? null : () => Navigator.of(context).pop(),
-                ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            '直连 hfs-be.yunxiao.com 官方接口，支持无限叠加多个家长端与学生端账号。',
-            style: TextStyle(
-              fontFamily: Taste.fontFamily,
-              fontSize: 12,
-              color: Taste.muted,
-            ),
-          ),
-          const SizedBox(height: 14),
-          if (!isReauth) ...[
-            Container(
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                color: Taste.raised,
-                borderRadius: BorderRadius.circular(Taste.radiusControl),
-                border: Border.all(color: Taste.border),
-              ),
-              child: Wrap(
-                spacing: 4,
-                runSpacing: 4,
-                children: [
-                  _buildModeTab(0, '登录已有账号'),
-                  _buildModeTab(1, '注册新账号'),
-                  _buildModeTab(2, '找回密码'),
-                  _buildModeTab(3, '微信免密'),
-                  _buildModeTab(4, '微信注册'),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              const Text(
-                '客户端类型：',
-                style: TextStyle(
-                  fontFamily: Taste.fontFamily,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: Taste.muted,
-                ),
-              ),
-              ChoiceChip(
-                label: const Text('家长版 (可绑多人)', style: TextStyle(fontSize: 12)),
-                selected: _roleType == 2,
-                onSelected: _busy
-                    ? null
-                    : (_) => setState(() => _roleType = 2),
-                visualDensity: VisualDensity.compact,
-              ),
-              ChoiceChip(
-                label: const Text('学生版', style: TextStyle(fontSize: 12)),
-                selected: _roleType == 1,
-                onSelected: _busy
-                    ? null
-                    : (_) => setState(() => _roleType = 1),
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _buildLabeledInput(
-            label: _mode == 0
-                ? '手机号 / 好分数账号 / 学号'
-                : ((_mode == 3 || _mode == 4) ? '关联手机号' : '11 位手机号码'),
-            controller: _phoneCtrl,
-            hint: _mode == 0
-                ? '输入手机号或学生端账号'
-                : ((_mode == 3 || _mode == 4)
-                    ? '仅填写你自己的手机号'
-                    : '请输入未注册的 11 位手机号'),
-          ),
-          if (_mode == 3) ...[
-            _buildLabeledInput(
-              label: '微信 wx.login() code',
-              controller: _miniCodeCtrl,
-              hint: '从你自己的微信小程序 wx.login() 获取',
-            ),
-            const SizedBox(height: 10),
-            _buildLabeledInput(
-              label: '微信 unionId',
-              controller: _miniUnionIdCtrl,
-              hint: '从你自己的小程序会话/服务端获取',
-            ),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(9),
-              decoration: BoxDecoration(
-                color: Taste.pillWarnBg,
-                borderRadius: BorderRadius.circular(Taste.radiusControl),
-              ),
-              child: const Text(
-                '此模式只连接你自己的微信身份，并将 account-related-user 返回的账号列表展示在本地；Flutter 无法自行调用 wx.login()。不会猜测 code、unionId，也不会对第三方手机号发起查询。',
-                style: TextStyle(fontSize: 11.5, color: Taste.pillWarnInk),
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (_miniRelated != null && _miniRelated!.users.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.all(9),
-                decoration: BoxDecoration(
-                  color: Taste.raised,
-                  borderRadius: BorderRadius.circular(Taste.radiusControl),
-                  border: Border.all(color: Taste.border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      '微信关联账号（仅显示脱敏手机号与角色）',
-                      style: TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 5),
-                    for (final u in _miniRelated!.users)
-                      InkWell(
-                        onTap: _busy
-                            ? null
-                            : () => setState(
-                                  () => _selectedMiniUserId = u.userId,
-                                ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Row(
-                            children: [
-                              Icon(
-                                _selectedMiniUserId == u.userId
-                                    ? Icons.radio_button_checked
-                                    : Icons.radio_button_unchecked,
-                                size: 19,
-                                color: _selectedMiniUserId == u.userId
-                                    ? Taste.accent
-                                    : Taste.muted,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  '${u.roleLabel} · ${maskLoginName(u.phone)}',
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                              ),
-                            ],
-                          ),
+                  child: Image.asset(
+                    'assets/images/app_logo.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (ctx, err, st) => const Center(
+                      child: Text(
+                        'HFS',
+                        style: TextStyle(
+                          fontFamily: Taste.fontFamily,
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    isReauth
+                        ? '重连账号 · ${widget.reauthAccount!.displayLabel}'
+                        : (_mode == 0
+                            ? '连接好分数官方账号'
+                            : (_mode == 1 ? '注册好分数新账号' : '短信找回好分数密码')),
+                    style: const TextStyle(
+                      fontFamily: Taste.fontFamily,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Taste.text,
+                    ),
+                  ),
+                ),
+                if (widget.isDialog)
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '直连 hfs-be.yunxiao.com 官方接口，支持无限叠加多个家长端与学生端账号。',
+              style: TextStyle(
+                fontFamily: Taste.fontFamily,
+                fontSize: 12,
+                color: Taste.muted,
+              ),
+            ),
+            const SizedBox(height: 14),
+            if (!isReauth) ...[
+              Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: Taste.raised,
+                  borderRadius: BorderRadius.circular(Taste.radiusControl),
+                  border: Border.all(color: Taste.border),
+                ),
+                child: Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: [
+                    _buildModeTab(0, '登录已有账号'),
+                    _buildModeTab(1, '注册新账号'),
+                    _buildModeTab(2, '找回密码'),
+                    _buildModeTab(3, '微信免密'),
+                    _buildModeTab(4, '微信注册'),
                   ],
                 ),
               ),
-            const SizedBox(height: 8),
+              const SizedBox(height: 12),
+            ],
             Wrap(
               spacing: 8,
               runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                OutlinedButton.icon(
-                  onPressed: (_miniDiscovering || _busy)
-                      ? null
-                      : _discoverMiniAccounts,
-                  icon: _miniDiscovering
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 1.6),
-                        )
-                      : const Icon(Icons.search, size: 15),
-                  label: Text(
-                    _miniDiscovering ? '查询中…' : '查询微信关联账号',
-                    style: const TextStyle(fontSize: 12),
+                const Text(
+                  '客户端类型：',
+                  style: TextStyle(
+                    fontFamily: Taste.fontFamily,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Taste.muted,
                   ),
                 ),
-                if (_miniLoggingIn)
-                  const Text(
-                    '正在换取会话…',
-                    style: TextStyle(fontSize: 12, color: Taste.muted),
-                  ),
-              ],
-            ),
-          ] else if (_mode == 4) ...[
-            _buildLabeledInput(
-              label: '微信 unionId',
-              controller: _miniUnionIdCtrl,
-              hint: '从你自己的小程序会话/服务端获取',
-            ),
-            const SizedBox(height: 10),
-            _buildLabeledInput(
-              label: '真实短信验证码',
-              controller: _smsCodeCtrl,
-              hint: '服务端会校验，不能绕过',
-            ),
-            const SizedBox(height: 10),
-            _buildLabeledInput(
-              label: '设置密码',
-              controller: _passCtrl,
-              hint: '输入新账号密码',
-              obscure: true,
-            ),
-            const SizedBox(height: 8),
-            _buildLabeledInput(
-              label: '邀请码（选填）',
-              controller: _miniInvitationCtrl,
-              hint: '可留空',
-            ),
-            const Text(
-              '微信侧注册不会绕过短信验证码；邀请码为可选项。',
-              style: TextStyle(fontSize: 11.5, color: Taste.muted),
-            ),
-          ] else ...[
-            if (_mode == 1 || _mode == 2) ...[
-              if (_captchaSvg != null) ...[
-                const SizedBox(height: 10),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: _buildLabeledInput(
-                        label: '图形验证码（点击右侧图片可刷新）',
-                        controller: _captchaCtrl,
-                        hint: '输入图中字符',
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    SvgCaptchaView(
-                      svgXml: _captchaSvg!,
-                      width: 124,
-                      height: 38,
-                      onTapRefresh: _refreshCaptcha,
-                    ),
-                  ],
+                ChoiceChip(
+                  label:
+                      const Text('家长版 (可绑多人)', style: TextStyle(fontSize: 12)),
+                  selected: _roleType == 2,
+                  onSelected:
+                      _busy ? null : (_) => setState(() => _roleType = 2),
+                  visualDensity: VisualDensity.compact,
+                ),
+                ChoiceChip(
+                  label: const Text('学生版', style: TextStyle(fontSize: 12)),
+                  selected: _roleType == 1,
+                  onSelected:
+                      _busy ? null : (_) => setState(() => _roleType = 1),
+                  visualDensity: VisualDensity.compact,
                 ),
               ],
-              const SizedBox(height: 10),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: _buildLabeledInput(
-                      label: '短信验证码',
-                      controller: _smsCodeCtrl,
-                      hint: '6 位短信验证码',
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    height: 38,
-                    child: OutlinedButton(
-                      onPressed: (_sendingSms || _smsCountdown > 0 || _busy)
-                          ? null
-                          : _handleSendSms,
-                      child: Text(
-                        _sendingSms
-                            ? '发送中…'
-                            : (_smsCountdown > 0
-                                ? '重发 (${_smsCountdown}s)'
-                                : '获取验证码'),
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
-          const SizedBox(height: 10),
-          if (_mode != 3 && _mode != 4)
+            ),
+            const SizedBox(height: 12),
             _buildLabeledInput(
               label: _mode == 0
-                  ? '登录密码'
-                  : '设置密码（8~20位，建议含字母+数字+符号）',
-              controller: _passCtrl,
-              hint: _mode == 0 ? '输入好分数密码' : '如：Abc12345!',
-              obscure: true,
-              onSubmitted: (_) => _handleSubmit(),
+                  ? '手机号 / 好分数账号 / 学号'
+                  : ((_mode == 3 || _mode == 4) ? '关联手机号' : '11 位手机号码'),
+              controller: _phoneCtrl,
+              hint: _mode == 0
+                  ? '输入手机号或学生端账号'
+                  : ((_mode == 3 || _mode == 4)
+                      ? '仅填写你自己的手机号'
+                      : '请输入未注册的 11 位手机号'),
             ),
-          if (_mode != 3 && _mode != 4)
-            Row(
-              children: [
-                Expanded(
-                  child: _buildLabeledInput(
-                    label: '账号备注名（选填，便于多号区分）',
-                    controller: _labelCtrl,
-                    hint: '如：家长主号 / 二号池',
-                  ),
-                ),
-                if (_mode == 1) ...[
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _buildLabeledInput(
-                      label: '邀请码（选填）',
-                      controller: _inviteCtrl,
-                      hint: '可留空',
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          if (_infoText != null) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Taste.pillPosBg,
-                borderRadius: BorderRadius.circular(Taste.radiusControl),
+            if (_mode == 3) ...[
+              _buildLabeledInput(
+                label: '微信 wx.login() code',
+                controller: _miniCodeCtrl,
+                hint: '从你自己的微信小程序 wx.login() 获取',
               ),
-              child: Text(
-                _infoText!,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Taste.pillPosInk,
-                ),
+              const SizedBox(height: 10),
+              _buildLabeledInput(
+                label: '微信 unionId',
+                controller: _miniUnionIdCtrl,
+                hint: '从你自己的小程序会话/服务端获取',
               ),
-            ),
-          ],
-          if (_errorText != null) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Taste.pillNegBg,
-                borderRadius: BorderRadius.circular(Taste.radiusControl),
-              ),
-              child: Text(
-                _errorText!,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Taste.pillNegInk,
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 40,
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: Taste.primary,
-                foregroundColor: Taste.primaryInk,
-                shape: RoundedRectangleBorder(
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: Taste.pillWarnBg,
                   borderRadius: BorderRadius.circular(Taste.radiusControl),
                 ),
+                child: const Text(
+                  '此模式只连接你自己的微信身份，并将 account-related-user 返回的账号列表展示在本地；Flutter 无法自行调用 wx.login()。不会猜测 code、unionId，也不会对第三方手机号发起查询。',
+                  style: TextStyle(fontSize: 11.5, color: Taste.pillWarnInk),
+                ),
               ),
-              onPressed: _busy
-                  ? null
-                  : (_mode == 3
-                      ? _handleMiniLogin
-                      : (_mode == 4 ? _handleMiniRegister : _handleSubmit)),
-              child: Text(
-                _busy
-                    ? '正在与好分数服务器通信…'
-                    : (_mode == 0
-                        ? (isReauth ? '更新凭据并重连' : '直连登录并挂载账号')
-                        : (_mode == 1
-                            ? '立即注册并挂载账号'
-                            : (_mode == 2
-                                ? '重置密码并登录'
-                                : (_mode == 3
-                                    ? '微信免密登录并挂载'
-                                    : '微信注册')))),
-                style: const TextStyle(
-                  fontFamily: Taste.fontFamily,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+              const SizedBox(height: 8),
+              if (_miniRelated != null && _miniRelated!.users.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.all(9),
+                  decoration: BoxDecoration(
+                    color: Taste.raised,
+                    borderRadius: BorderRadius.circular(Taste.radiusControl),
+                    border: Border.all(color: Taste.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        '微信关联账号（仅显示脱敏手机号与角色）',
+                        style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 5),
+                      for (final u in _miniRelated!.users)
+                        InkWell(
+                          onTap: _busy
+                              ? null
+                              : () => setState(
+                                    () => _selectedMiniUserId = u.userId,
+                                  ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _selectedMiniUserId == u.userId
+                                      ? Icons.radio_button_checked
+                                      : Icons.radio_button_unchecked,
+                                  size: 19,
+                                  color: _selectedMiniUserId == u.userId
+                                      ? Taste.accent
+                                      : Taste.muted,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '${u.roleLabel} · ${maskLoginName(u.phone)}',
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: (_miniDiscovering || _busy)
+                        ? null
+                        : _discoverMiniAccounts,
+                    icon: _miniDiscovering
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 1.6),
+                          )
+                        : const Icon(Icons.search, size: 15),
+                    label: Text(
+                      _miniDiscovering ? '查询中…' : '查询微信关联账号',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                  if (_miniLoggingIn)
+                    const Text(
+                      '正在换取会话…',
+                      style: TextStyle(fontSize: 12, color: Taste.muted),
+                    ),
+                ],
+              ),
+            ] else if (_mode == 4) ...[
+              _buildLabeledInput(
+                label: '微信 unionId',
+                controller: _miniUnionIdCtrl,
+                hint: '从你自己的小程序会话/服务端获取',
+              ),
+              const SizedBox(height: 10),
+              _buildLabeledInput(
+                label: '真实短信验证码',
+                controller: _smsCodeCtrl,
+                hint: '服务端会校验，不能绕过',
+              ),
+              const SizedBox(height: 10),
+              _buildLabeledInput(
+                label: '设置密码',
+                controller: _passCtrl,
+                hint: '输入新账号密码',
+                obscure: true,
+              ),
+              const SizedBox(height: 8),
+              _buildLabeledInput(
+                label: '邀请码（选填）',
+                controller: _miniInvitationCtrl,
+                hint: '可留空',
+              ),
+              const Text(
+                '微信侧注册不会绕过短信验证码；邀请码为可选项。',
+                style: TextStyle(fontSize: 11.5, color: Taste.muted),
+              ),
+            ] else ...[
+              if (_mode == 1 || _mode == 2) ...[
+                if (_captchaSvg != null) ...[
+                  const SizedBox(height: 10),
+                  LayoutBuilder(
+                    builder: (ctx, box) {
+                      final compact = box.maxWidth < 420;
+                      return compact
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _buildLabeledInput(
+                                  label: '图形验证码',
+                                  controller: _captchaCtrl,
+                                  hint: '输入图中字符',
+                                ),
+                                const SizedBox(height: 8),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: SvgCaptchaView(
+                                    svgXml: _captchaSvg!,
+                                    width: 124,
+                                    height: 38,
+                                    onTapRefresh: _refreshCaptcha,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Expanded(
+                                  child: _buildLabeledInput(
+                                    label: '图形验证码（点击右侧图片可刷新）',
+                                    controller: _captchaCtrl,
+                                    hint: '输入图中字符',
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                SvgCaptchaView(
+                                  svgXml: _captchaSvg!,
+                                  width: 124,
+                                  height: 38,
+                                  onTapRefresh: _refreshCaptcha,
+                                ),
+                              ],
+                            );
+                    },
+                  ),
+                ],
+                const SizedBox(height: 10),
+                LayoutBuilder(
+                  builder: (ctx, box) {
+                    final compact = box.maxWidth < 420;
+                    return compact
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _buildLabeledInput(
+                                label: '短信验证码',
+                                controller: _smsCodeCtrl,
+                                hint: '6 位短信验证码',
+                              ),
+                              const SizedBox(height: 8),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: OutlinedButton(
+                                  onPressed: (_sendingSms ||
+                                          _smsCountdown > 0 ||
+                                          _busy)
+                                      ? null
+                                      : _handleSendSms,
+                                  child: Text(
+                                    _sendingSms
+                                        ? '发送中…'
+                                        : (_smsCountdown > 0
+                                            ? '重发 (${_smsCountdown}s)'
+                                            : '获取验证码'),
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: _buildLabeledInput(
+                                  label: '短信验证码',
+                                  controller: _smsCodeCtrl,
+                                  hint: '6 位短信验证码',
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                height: 38,
+                                child: OutlinedButton(
+                                  onPressed: (_sendingSms ||
+                                          _smsCountdown > 0 ||
+                                          _busy)
+                                      ? null
+                                      : _handleSendSms,
+                                  child: Text(
+                                    _sendingSms
+                                        ? '发送中…'
+                                        : (_smsCountdown > 0
+                                            ? '重发 (${_smsCountdown}s)'
+                                            : '获取验证码'),
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                  },
+                ),
+              ],
+            ],
+            const SizedBox(height: 10),
+            if (_mode != 3 && _mode != 4)
+              _buildLabeledInput(
+                label: _mode == 0 ? '登录密码' : '设置密码（8~20位，建议含字母+数字+符号）',
+                controller: _passCtrl,
+                hint: _mode == 0 ? '输入好分数密码' : '如：Abc12345!',
+                obscure: true,
+                onSubmitted: (_) => _handleSubmit(),
+              ),
+            LayoutBuilder(
+              builder: (ctx, box) {
+                final compact = box.maxWidth < 420;
+                return compact
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildLabeledInput(
+                            label: '账号备注名（选填，便于多号区分）',
+                            controller: _labelCtrl,
+                            hint: '如：家长主号 / 二号池',
+                          ),
+                          if (_mode == 1) ...[
+                            const SizedBox(height: 10),
+                            _buildLabeledInput(
+                              label: '邀请码（选填）',
+                              controller: _inviteCtrl,
+                              hint: '可留空',
+                            ),
+                          ],
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          Expanded(
+                            child: _buildLabeledInput(
+                              label: '账号备注名（选填，便于多号区分）',
+                              controller: _labelCtrl,
+                              hint: '如：家长主号 / 二号池',
+                            ),
+                          ),
+                          if (_mode == 1) ...[
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildLabeledInput(
+                                label: '邀请码（选填）',
+                                controller: _inviteCtrl,
+                                hint: '可留空',
+                              ),
+                            ),
+                          ],
+                        ],
+                      );
+              },
+            ),
+            if (_infoText != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Taste.pillPosBg,
+                  borderRadius: BorderRadius.circular(Taste.radiusControl),
+                ),
+                child: Text(
+                  _infoText!,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Taste.pillPosInk,
+                  ),
+                ),
+              ),
+            ],
+            if (_errorText != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Taste.pillNegBg,
+                  borderRadius: BorderRadius.circular(Taste.radiusControl),
+                ),
+                child: Text(
+                  _errorText!,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Taste.pillNegInk,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 40,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Taste.primary,
+                  foregroundColor: Taste.primaryInk,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(Taste.radiusControl),
+                  ),
+                ),
+                onPressed: _busy
+                    ? null
+                    : (_mode == 3
+                        ? _handleMiniLogin
+                        : (_mode == 4 ? _handleMiniRegister : _handleSubmit)),
+                child: Text(
+                  _busy
+                      ? '正在与好分数服务器通信…'
+                      : (_mode == 0
+                          ? (isReauth ? '更新凭据并重连' : '直连登录并挂载账号')
+                          : (_mode == 1
+                              ? '立即注册并挂载账号'
+                              : (_mode == 2
+                                  ? '重置密码并登录'
+                                  : (_mode == 3 ? '微信免密登录并挂载' : '微信注册')))),
+                  style: const TextStyle(
+                    fontFamily: Taste.fontFamily,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
@@ -1466,6 +1551,8 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) => AlertDialog(
           backgroundColor: Taste.surface,
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
           title: Row(
             children: [
               Icon(
@@ -1478,9 +1565,7 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  needsStuAccWarn
-                      ? '高危换绑风控拦截 (4137 删源风险)'
-                      : '确认消耗 -1 活名额进行换绑？',
+                  needsStuAccWarn ? '高危换绑风控拦截 (4137 删源风险)' : '确认消耗 -1 活名额进行换绑？',
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -1497,6 +1582,8 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                 '源学生（将被移除）：${sourceStu.studentName} (${sourceStu.changeBindStatusLabel})\n'
                 '目标新学生：${targetName ?? "所选目标学生"}\n'
                 '挂载账号：${_targetAccount.displayLabel}',
+                maxLines: 6,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
@@ -1558,20 +1645,27 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(null),
-              child: const Text('取消换绑'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor:
-                    needsStuAccWarn ? Taste.negative : Taste.primary,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: (needsStuAccWarn && !forceAllowStuAcc)
-                  ? null
-                  : () => Navigator.of(ctx).pop(forceAllowStuAcc),
-              child: const Text('确认执行换绑'),
+            OverflowBar(
+              spacing: 8,
+              overflowSpacing: 4,
+              alignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(null),
+                  child: const Text('取消换绑'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor:
+                        needsStuAccWarn ? Taste.negative : Taste.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: (needsStuAccWarn && !forceAllowStuAcc)
+                      ? null
+                      : () => Navigator.of(ctx).pop(forceAllowStuAcc),
+                  child: const Text('确认执行换绑'),
+                ),
+              ],
             ),
           ],
         ),
@@ -1740,77 +1834,157 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.close, size: 18),
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(context).pop(),
+                    onPressed:
+                        _submitting ? null : () => Navigator.of(context).pop(),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              // Account selector
-              Row(
-                children: [
-                  const Text(
-                    '目标账号：',
-                    style: TextStyle(fontSize: 12, color: Taste.muted),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      key: ValueKey(
-                          'bind_acc_${_targetAccount.id}_${_targetAccount.students.length}'),
-                      initialValue: _targetAccount.id,
-                      isExpanded: true,
-                      isDense: true,
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
-                        border: OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(Taste.radiusControl),
-                        ),
-                      ),
-                      items: [
-                        for (final a in widget.accounts)
-                          DropdownMenuItem(
-                            value: a.id,
-                            child: Text(
-                              '${a.displayLabel} (${a.roleType == 1 ? "学生端" : "家长端"} · 已绑${a.students.length}/${a.estimatedMaxQuota}人)',
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 12),
+              LayoutBuilder(
+                builder: (ctx, box) {
+                  final compact = box.maxWidth < 420;
+                  return compact
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              '目标账号：',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Taste.muted,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
-                          ),
-                      ],
-                      onChanged: _submitting
-                          ? null
-                          : (val) {
-                              if (val == null) return;
-                              final found = widget.accounts
-                                  .firstWhere((a) => a.id == val);
-                              setState(() {
-                                _targetAccount = found;
-                                _replaceStudentId = '';
-                                _error = null;
-                              });
-                              _refreshTargetAccountQuota();
-                            },
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  IconButton(
-                    tooltip: '实时刷新该账号关联学生与换绑锁状态 (GET /v2/user-center/related-students)',
-                    visualDensity: VisualDensity.compact,
-                    onPressed:
-                        _refreshingQuota ? null : _refreshTargetAccountQuota,
-                    icon: _refreshingQuota
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 1.8),
-                          )
-                        : const Icon(Icons.refresh, size: 16),
-                  ),
-                ],
+                            const SizedBox(height: 6),
+                            DropdownButtonFormField<String>(
+                              key: ValueKey(
+                                  'bind_acc_${_targetAccount.id}_${_targetAccount.students.length}'),
+                              initialValue: _targetAccount.id,
+                              isExpanded: true,
+                              isDense: true,
+                              decoration: InputDecoration(
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 6),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(
+                                      Taste.radiusControl),
+                                ),
+                              ),
+                              items: [
+                                for (final a in widget.accounts)
+                                  DropdownMenuItem(
+                                    value: a.id,
+                                    child: Text(
+                                      '${a.displayLabel} (${a.roleType == 1 ? "学生端" : "家长端"} · 已绑${a.students.length}/${a.estimatedMaxQuota}人)',
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                              ],
+                              onChanged: _submitting
+                                  ? null
+                                  : (val) {
+                                      if (val == null) return;
+                                      final found = widget.accounts
+                                          .firstWhere((a) => a.id == val);
+                                      setState(() {
+                                        _targetAccount = found;
+                                        _replaceStudentId = '';
+                                        _error = null;
+                                      });
+                                      _refreshTargetAccountQuota();
+                                    },
+                            ),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: IconButton(
+                                tooltip:
+                                    '实时刷新该账号关联学生与换绑锁状态 (GET /v2/user-center/related-students)',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: _refreshingQuota
+                                    ? null
+                                    : _refreshTargetAccountQuota,
+                                icon: _refreshingQuota
+                                    ? const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 1.8),
+                                      )
+                                    : const Icon(Icons.refresh, size: 16),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            const Text(
+                              '目标账号：',
+                              style:
+                                  TextStyle(fontSize: 12, color: Taste.muted),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                key: ValueKey(
+                                    'bind_acc_${_targetAccount.id}_${_targetAccount.students.length}'),
+                                initialValue: _targetAccount.id,
+                                isExpanded: true,
+                                isDense: true,
+                                decoration: InputDecoration(
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 6),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(
+                                        Taste.radiusControl),
+                                  ),
+                                ),
+                                items: [
+                                  for (final a in widget.accounts)
+                                    DropdownMenuItem(
+                                      value: a.id,
+                                      child: Text(
+                                        '${a.displayLabel} (${a.roleType == 1 ? "学生端" : "家长端"} · 已绑${a.students.length}/${a.estimatedMaxQuota}人)',
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    ),
+                                ],
+                                onChanged: _submitting
+                                    ? null
+                                    : (val) {
+                                        if (val == null) return;
+                                        final found = widget.accounts
+                                            .firstWhere((a) => a.id == val);
+                                        setState(() {
+                                          _targetAccount = found;
+                                          _replaceStudentId = '';
+                                          _error = null;
+                                        });
+                                        _refreshTargetAccountQuota();
+                                      },
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            IconButton(
+                              tooltip:
+                                  '实时刷新该账号关联学生与换绑锁状态 (GET /v2/user-center/related-students)',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: _refreshingQuota
+                                  ? null
+                                  : _refreshTargetAccountQuota,
+                              icon: _refreshingQuota
+                                  ? const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 1.8),
+                                    )
+                                  : const Icon(Icons.refresh, size: 16),
+                            ),
+                          ],
+                        );
+                },
               ),
               const SizedBox(height: 8),
               // Quota & Add vs Rebind Slot Selector Box
@@ -1820,9 +1994,8 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                   color: isRebindMode ? Taste.pillWarnBg : Taste.raised,
                   borderRadius: BorderRadius.circular(Taste.radiusControl),
                   border: Border.all(
-                    color: isRebindMode
-                        ? const Color(0xFFFDE68A)
-                        : Taste.border,
+                    color:
+                        isRebindMode ? const Color(0xFFFDE68A) : Taste.border,
                   ),
                 ),
                 child: Column(
@@ -1841,8 +2014,7 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                               : TastePillTone.positive,
                         ),
                         TastePill(
-                          label:
-                              '-1活名额: ${_targetAccount.minusOneSlotCount} 个',
+                          label: '-1活名额: ${_targetAccount.minusOneSlotCount} 个',
                           tone: _targetAccount.minusOneSlotCount > 0
                               ? TastePillTone.blue
                               : TastePillTone.neutral,
@@ -1891,6 +2063,8 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                             selected: _replaceStudentId == s.studentId,
                             label: Text(
                               '⇄ 换绑：${s.studentName} (${s.changeBindStatusLabel})',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 11.5,
                                 color: s.isSemesterLocked ? Taste.muted : null,
@@ -1952,18 +2126,48 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                         const SizedBox(height: 10),
                         _inputField('学校授权码（选填）', _authCtrl, '无授权码请留空'),
                       ] else if (_channel == 1) ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _inputField(
-                                  '学校 ID (如已知可直接填)', _schoolIdCtrl, '如 [REDACTED]'),
-                            ),
-                            const SizedBox(width: 8),
-                            SizedBox(
-                              width: 110,
-                              child: _inputField('年级', _gradeCtrl, '如 初三 / 高一'),
-                            ),
-                          ],
+                        LayoutBuilder(
+                          builder: (ctx, box) {
+                            final compact = box.maxWidth < 420;
+                            if (compact) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _inputField(
+                                    '学校 ID (如已知可直接填)',
+                                    _schoolIdCtrl,
+                                    '如 [REDACTED]',
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _inputField(
+                                    '年级',
+                                    _gradeCtrl,
+                                    '如 初三 / 高一',
+                                  ),
+                                ],
+                              );
+                            }
+                            return Row(
+                              children: [
+                                Expanded(
+                                  child: _inputField(
+                                    '学校 ID (如已知可直接填)',
+                                    _schoolIdCtrl,
+                                    '如 [REDACTED]',
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                SizedBox(
+                                  width: 110,
+                                  child: _inputField(
+                                    '年级',
+                                    _gradeCtrl,
+                                    '如 初三 / 高一',
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                         const SizedBox(height: 8),
                         if (_provinces.isEmpty)
@@ -2073,24 +2277,60 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                             ),
                         ],
                         const SizedBox(height: 8),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Expanded(
-                              child: _inputField(
-                                  '学生姓名', _nameCtrl, '输入姓名查询脱敏学号与 ID'),
-                            ),
-                            const SizedBox(width: 8),
-                            SizedBox(
-                              height: 36,
-                              child: OutlinedButton(
-                                onPressed:
-                                    _submitting ? null : _querySchoolStudents,
-                                child: const Text('查询学生',
-                                    style: TextStyle(fontSize: 12)),
-                              ),
-                            ),
-                          ],
+                        LayoutBuilder(
+                          builder: (ctx, box) {
+                            final compact = box.maxWidth < 420;
+                            return compact
+                                ? Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      _inputField(
+                                        '学生姓名',
+                                        _nameCtrl,
+                                        '输入姓名查询脱敏学号与 ID',
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: OutlinedButton(
+                                          onPressed: _submitting
+                                              ? null
+                                              : _querySchoolStudents,
+                                          child: const Text(
+                                            '查询学生',
+                                            style: TextStyle(fontSize: 12),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Row(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Expanded(
+                                        child: _inputField(
+                                          '学生姓名',
+                                          _nameCtrl,
+                                          '输入姓名查询脱敏学号与 ID',
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      SizedBox(
+                                        height: 36,
+                                        child: OutlinedButton(
+                                          onPressed: _submitting
+                                              ? null
+                                              : _querySchoolStudents,
+                                          child: const Text(
+                                            '查询学生',
+                                            style: TextStyle(fontSize: 12),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                          },
                         ),
                         if (_matchedStudents.isNotEmpty) ...[
                           const SizedBox(height: 10),
@@ -2175,16 +2415,16 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                 ),
               ),
               const SizedBox(height: 14),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+              OverflowBar(
+                alignment: MainAxisAlignment.end,
+                spacing: 8,
+                overflowSpacing: 4,
                 children: [
                   TextButton(
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(context).pop(),
+                    onPressed:
+                        _submitting ? null : () => Navigator.of(context).pop(),
                     child: const Text('取消'),
                   ),
-                  const SizedBox(width: 8),
                   if (_channel != 1)
                     FilledButton(
                       style: FilledButton.styleFrom(
@@ -2198,6 +2438,8 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                             : (isRebindMode
                                 ? '确认换绑替换「${replaceStu.studentName}」'
                                 : '确认新增绑定'),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                 ],
@@ -2241,30 +2483,59 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: _inputField(
-                isRebindMode
-                    ? '目标新学生 studentId (PATCH /v2/native-users/bind-student 替换「${replaceStu.studentName}」)'
-                    : '直接输入或从下方名册点选 studentId (POST /v2/native-users/bind-students)',
-                _stuIdCtrl,
-                '24 位内部 studentId，点击下方同学可自动填入或一键执行',
-              ),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              height: 36,
-              child: FilledButton.tonal(
-                onPressed: _submitting ? null : () => _submitBind(),
-                child: Text(
-                  isRebindMode ? '换绑该 ID' : '直绑该 ID',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ),
-          ],
+        LayoutBuilder(
+          builder: (ctx, box) {
+            final compact = box.maxWidth < 420;
+            return compact
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _inputField(
+                        isRebindMode
+                            ? '目标新学生 studentId (换绑「${replaceStu.studentName}」)'
+                            : '直接输入或从下方名册点选 studentId',
+                        _stuIdCtrl,
+                        '24 位内部 studentId',
+                      ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: FilledButton.tonal(
+                          onPressed: _submitting ? null : () => _submitBind(),
+                          child: Text(
+                            isRebindMode ? '换绑该 ID' : '直绑该 ID',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: _inputField(
+                          isRebindMode
+                              ? '目标新学生 studentId (PATCH /v2/native-users/bind-student 替换「${replaceStu.studentName}」)'
+                              : '直接输入或从下方名册点选 studentId (POST /v2/native-users/bind-students)',
+                          _stuIdCtrl,
+                          '24 位内部 studentId，点击下方同学可自动填入或一键执行',
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        height: 36,
+                        child: FilledButton.tonal(
+                          onPressed: _submitting ? null : () => _submitBind(),
+                          child: Text(
+                            isRebindMode ? '换绑该 ID' : '直绑该 ID',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+          },
         ),
         if (isRebindMode) ...[
           const SizedBox(height: 8),
@@ -2446,9 +2717,8 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                                           : TastePillTone.neutral,
                                     ),
                                     TastePill(
-                                      label: c.hasParentAccount
-                                          ? '已绑家长端'
-                                          : '无家长号',
+                                      label:
+                                          c.hasParentAccount ? '已绑家长端' : '无家长号',
                                       tone: c.hasParentAccount
                                           ? TastePillTone.positive
                                           : TastePillTone.warning,
@@ -2490,14 +2760,14 @@ class _BindStudentAdvancedDialogState extends State<BindStudentAdvancedDialog> {
                                     visualDensity: VisualDensity.compact,
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 10),
-                                    backgroundColor: (isRebindMode &&
-                                            c.hasStudentAccount)
-                                        ? Taste.pillNegBg
-                                        : null,
-                                    foregroundColor: (isRebindMode &&
-                                            c.hasStudentAccount)
-                                        ? Taste.negative
-                                        : null,
+                                    backgroundColor:
+                                        (isRebindMode && c.hasStudentAccount)
+                                            ? Taste.pillNegBg
+                                            : null,
+                                    foregroundColor:
+                                        (isRebindMode && c.hasStudentAccount)
+                                            ? Taste.negative
+                                            : null,
                                   ),
                                   onPressed: (_submitting || alreadyInTarget)
                                       ? null
@@ -2665,8 +2935,8 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
     try {
       List<WrongQuestionItem> res = const [];
       if (reqMode == 1 && curSubj.semesters.isNotEmpty) {
-        final sem = curSubj
-            .semesters[reqSemIdx.clamp(0, curSubj.semesters.length - 1)];
+        final sem =
+            curSubj.semesters[reqSemIdx.clamp(0, curSubj.semesters.length - 1)];
         if (sem.startMs > 0 && sem.endMs > 0) {
           res = await widget.client.fetchWrongSemesterItems(
             account: widget.account,
@@ -2911,8 +3181,7 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
                                             sIdx == _selectedSemesterIndex,
                                         label: Text(
                                           '${curSubj.semesters[sIdx].name} (错${curSubj.semesters[sIdx].wrongNum}题)',
-                                          style:
-                                              const TextStyle(fontSize: 12),
+                                          style: const TextStyle(fontSize: 12),
                                         ),
                                         onSelected: (_) {
                                           setState(() =>
@@ -3328,53 +3597,54 @@ class _WrongNotebookPanelState extends State<WrongNotebookPanel> {
           ),
           childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            children: [
-              TastePill(
-                label: '会员状态: ${dash.isMember ? "VIP会员" : "普通账号"}',
-                tone: dash.isMember
-                    ? TastePillTone.positive
-                    : TastePillTone.neutral,
-              ),
-              TastePill(
-                label: '单次考试会员: ${dash.isExamMember ? "是" : "否"}',
-                tone: TastePillTone.neutral,
-              ),
-              TastePill(
-                label: '错题解锁科目: ${dash.unlockedSubjects}/${dash.totalSubjects}',
-                tone: TastePillTone.blue,
-              ),
-              TastePill(
-                label: '剩余拍照上传额度: ${dash.uploadRemain}',
-                tone: TastePillTone.neutral,
-              ),
-              TastePill(
-                label: '剩余错题导出额度: ${dash.exportRemain}',
-                tone: TastePillTone.neutral,
-              ),
-            ],
-          ),
-          if (dash.rawSchoolHidden.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Taste.raised,
-                borderRadius: BorderRadius.circular(Taste.radiusControl),
-              ),
-              child: Text(
-                '学校隐藏策略配置 (/v2/config/school/hidden-config)：\n${const JsonEncoder.withIndent("  ").convert(dash.rawSchoolHidden)}',
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                  color: Taste.muted,
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                TastePill(
+                  label: '会员状态: ${dash.isMember ? "VIP会员" : "普通账号"}',
+                  tone: dash.isMember
+                      ? TastePillTone.positive
+                      : TastePillTone.neutral,
+                ),
+                TastePill(
+                  label: '单次考试会员: ${dash.isExamMember ? "是" : "否"}',
+                  tone: TastePillTone.neutral,
+                ),
+                TastePill(
+                  label:
+                      '错题解锁科目: ${dash.unlockedSubjects}/${dash.totalSubjects}',
+                  tone: TastePillTone.blue,
+                ),
+                TastePill(
+                  label: '剩余拍照上传额度: ${dash.uploadRemain}',
+                  tone: TastePillTone.neutral,
+                ),
+                TastePill(
+                  label: '剩余错题导出额度: ${dash.exportRemain}',
+                  tone: TastePillTone.neutral,
+                ),
+              ],
+            ),
+            if (dash.rawSchoolHidden.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Taste.raised,
+                  borderRadius: BorderRadius.circular(Taste.radiusControl),
+                ),
+                child: Text(
+                  '学校隐藏策略配置 (/v2/config/school/hidden-config)：\n${const JsonEncoder.withIndent("  ").convert(dash.rawSchoolHidden)}',
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    color: Taste.muted,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
           ],
         ),
       ),
@@ -3438,8 +3708,7 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
   void initState() {
     super.initState();
     _selectedAccount = widget.account;
-    _selectedStudent =
-        widget.currentStudent ?? widget.account.activeStudent;
+    _selectedStudent = widget.currentStudent ?? widget.account.activeStudent;
     _bindTargetAccount = widget.account;
     _load();
     _refreshTargetQuota();
@@ -3509,6 +3778,8 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) => AlertDialog(
           backgroundColor: Taste.surface,
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
           title: Row(
             children: [
               Icon(
@@ -3521,9 +3792,7 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  needsStuAccWarn
-                      ? '高危换绑风控拦截 (4137 删源风险)'
-                      : '确认消耗 -1 活名额进行换绑？',
+                  needsStuAccWarn ? '高危换绑风控拦截 (4137 删源风险)' : '确认消耗 -1 活名额进行换绑？',
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -3601,20 +3870,27 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(null),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor:
-                    needsStuAccWarn ? Taste.negative : Taste.primary,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: (needsStuAccWarn && !forceAllowStuAcc)
-                  ? null
-                  : () => Navigator.of(ctx).pop(forceAllowStuAcc),
-              child: const Text('确认执行换绑'),
+            OverflowBar(
+              spacing: 8,
+              overflowSpacing: 4,
+              alignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(null),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor:
+                        needsStuAccWarn ? Taste.negative : Taste.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: (needsStuAccWarn && !forceAllowStuAcc)
+                      ? null
+                      : () => Navigator.of(ctx).pop(forceAllowStuAcc),
+                  child: const Text('确认执行换绑'),
+                ),
+              ],
             ),
           ],
         ),
@@ -3725,12 +4001,12 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
     }).toList();
     final stuBoundCnt = _roster.where((c) => c.hasStudentAccount).length;
     final parBoundCnt = _roster.where((c) => c.hasParentAccount).length;
-    final resolvedClassName = (_roster.isNotEmpty &&
-            _roster.first.className.isNotEmpty)
-        ? '${_roster.first.grade}${_roster.first.className}'
-        : (_selectedStudent?.className.isNotEmpty == true
-            ? '${_selectedStudent!.grade}${_selectedStudent!.className}'
-            : '当前班级');
+    final resolvedClassName =
+        (_roster.isNotEmpty && _roster.first.className.isNotEmpty)
+            ? '${_roster.first.grade}${_roster.first.className}'
+            : (_selectedStudent?.className.isNotEmpty == true
+                ? '${_selectedStudent!.grade}${_selectedStudent!.className}'
+                : '当前班级');
 
     final trimmedSearch = _search.trim();
     final canDirectBindSearchId =
@@ -3791,10 +4067,9 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                           padding: const EdgeInsets.only(right: 6),
                           child: ChoiceChip(
                             visualDensity: VisualDensity.compact,
-                            selected:
-                                _selectedAccount.id == item.acc.id &&
-                                    _selectedStudent?.studentId ==
-                                        item.stu.studentId,
+                            selected: _selectedAccount.id == item.acc.id &&
+                                _selectedStudent?.studentId ==
+                                    item.stu.studentId,
                             label: Text(
                               '${item.stu.studentName} (${item.stu.grade}${item.stu.className})',
                               style: const TextStyle(fontSize: 12),
@@ -3821,9 +4096,8 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                   color: isRebindMode ? Taste.pillWarnBg : Taste.raised,
                   borderRadius: BorderRadius.circular(Taste.radiusControl),
                   border: Border.all(
-                    color: isRebindMode
-                        ? const Color(0xFFFDE68A)
-                        : Taste.border,
+                    color:
+                        isRebindMode ? const Color(0xFFFDE68A) : Taste.border,
                   ),
                 ),
                 child: Column(
@@ -3841,7 +4115,8 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                             Icon(
                               isRebindMode ? Icons.swap_horiz : Icons.link,
                               size: 15,
-                              color: isRebindMode ? Taste.warning : Taste.accent,
+                              color:
+                                  isRebindMode ? Taste.warning : Taste.accent,
                             ),
                             const SizedBox(width: 6),
                             const Flexible(
@@ -3951,6 +4226,8 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                             selected: _replaceStudentId == s.studentId,
                             label: Text(
                               '⇄ 换绑：${s.studentName} (${s.changeBindStatusLabel})',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 11,
                                 color: s.isSemesterLocked ? Taste.muted : null,
@@ -4035,60 +4312,76 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                     tone: TastePillTone.positive,
                   ),
                   TastePill(
-                    label:
-                        '未绑家长端: ${_roster.length - parBoundCnt} 人',
+                    label: '未绑家长端: ${_roster.length - parBoundCnt} 人',
                     tone: TastePillTone.warning,
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 36,
-                      child: TextField(
-                        onChanged: (v) => setState(() => _search = v),
-                        style: const TextStyle(fontSize: 13),
-                        decoration: InputDecoration(
-                          hintText: '搜索同学姓名，或粘贴任意 studentId 直接绑定…',
-                          prefixIcon: const Icon(Icons.search, size: 16),
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 0),
-                          border: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(Taste.radiusControl),
+              LayoutBuilder(
+                builder: (ctx, box) {
+                  final compact = box.maxWidth < 420;
+                  final searchField = SizedBox(
+                    height: 36,
+                    child: TextField(
+                      onChanged: (v) => setState(() => _search = v),
+                      style: const TextStyle(fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: '搜索同学姓名，或粘贴任意 studentId 直接绑定…',
+                        prefixIcon: const Icon(Icons.search, size: 16),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                        border: OutlineInputBorder(
+                          borderRadius:
+                              BorderRadius.circular(Taste.radiusControl),
+                        ),
+                      ),
+                    ),
+                  );
+                  final directBind = canDirectBindSearchId
+                      ? SizedBox(
+                          height: 36,
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Taste.primary,
+                              foregroundColor: Taste.primaryInk,
+                            ),
+                            onPressed: _bindingStudentId != null
+                                ? null
+                                : () => _handleBindByStudentId(trimmedSearch),
+                            icon: Icon(
+                              isRebindMode
+                                  ? Icons.swap_horiz
+                                  : Icons.person_add_alt_1,
+                              size: 15,
+                            ),
+                            label: Text(
+                              isRebindMode ? '换绑该 ID' : '直绑该 ID',
+                              style: const TextStyle(fontSize: 12),
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (canDirectBindSearchId) ...[
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      height: 36,
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Taste.primary,
-                          foregroundColor: Taste.primaryInk,
-                        ),
-                        onPressed: _bindingStudentId != null
-                            ? null
-                            : () => _handleBindByStudentId(trimmedSearch),
-                        icon: Icon(
-                          isRebindMode
-                              ? Icons.swap_horiz
-                              : Icons.person_add_alt_1,
-                          size: 15,
-                        ),
-                        label: Text(
-                          isRebindMode ? '换绑该 ID' : '直绑该 ID',
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
+                        )
+                      : null;
+                  if (compact && directBind != null) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        searchField,
+                        const SizedBox(height: 8),
+                        Align(
+                            alignment: Alignment.centerLeft, child: directBind),
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: searchField),
+                      if (directBind != null) ...[
+                        const SizedBox(width: 8),
+                        directBind,
+                      ],
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 8),
               Expanded(
@@ -4097,8 +4390,7 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                     : (_error != null)
                         ? Center(
                             child: Text(_error!,
-                                style:
-                                    const TextStyle(color: Taste.negative)),
+                                style: const TextStyle(color: Taste.negative)),
                           )
                         : ListView.separated(
                             itemCount: filtered.length,
@@ -4136,8 +4428,7 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                                             child: Text(
                                               '${i + 1}',
                                               style: Taste.numStyle(
-                                                  size: 12,
-                                                  color: Taste.muted),
+                                                  size: 12, color: Taste.muted),
                                             ),
                                           ),
                                         ),
@@ -4154,6 +4445,9 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                                                 children: [
                                                   Text(
                                                     c.name,
+                                                    maxLines: 2,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
                                                     style: const TextStyle(
                                                       fontSize: 13,
                                                       fontWeight:
@@ -4224,8 +4518,8 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                                               SnackBar(
                                                 content: Text(
                                                     '已复制 ${c.name} 的 studentId: ${c.id}'),
-                                                duration: const Duration(
-                                                    seconds: 2),
+                                                duration:
+                                                    const Duration(seconds: 2),
                                               ),
                                             );
                                           },
@@ -4365,10 +4659,7 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
       path: '/v2/wrong-items/overview',
       label: '错题本概览 (/v2/wrong-items/overview)'
     ),
-    (
-      path: '/v3/exam/list?start=0',
-      label: '考试列表 (/v3/exam/list?start=0)'
-    ),
+    (path: '/v3/exam/list?start=0', label: '考试列表 (/v3/exam/list?start=0)'),
   ];
 
   List<({String key, HfsAccount account, StudentInfo? student, String label})>
@@ -4378,8 +4669,12 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
         : (widget.activeAccount != null
             ? <HfsAccount>[widget.activeAccount!]
             : const <HfsAccount>[]);
-    final targets =
-        <({String key, HfsAccount account, StudentInfo? student, String label})>[];
+    final targets = <({
+      String key,
+      HfsAccount account,
+      StudentInfo? student,
+      String label
+    })>[];
     for (final acc in sourceAccounts) {
       if (acc.students.isEmpty) {
         targets.add((
@@ -4457,11 +4752,8 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
     String content, {
     String? customPath,
   }) async {
-    final ts = DateTime.now()
-        .toIso8601String()
-        .replaceAll(':', '-')
-        .split('.')
-        .first;
+    final ts =
+        DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
     final defaultFileName = 'hfs_credentials_$ts.json';
 
     if (customPath != null && customPath.trim().isNotEmpty) {
@@ -4471,7 +4763,8 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
       return f.path;
     }
 
-    final dlDir = await HfsImageClipboardAndExporter.resolveDownloadsDirectory();
+    final dlDir =
+        await HfsImageClipboardAndExporter.resolveDownloadsDirectory();
     final f = File('${dlDir.path}${Platform.pathSeparator}$defaultFileName');
     await f.writeAsString(content, flush: true);
     return f.path;
@@ -4505,151 +4798,164 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) => AlertDialog(
           backgroundColor: Taste.surface,
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
           title: const Text(
             '好分数凭证文件导出与导入 (.json)',
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
           ),
-          content: SizedBox(
-            width: 520,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    '包含全部已挂载好分数账号、登录凭证、hfs-session-id Cookie Jar、绑定学生及快照：',
-                    style: TextStyle(fontSize: 12, color: Taste.muted),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 34,
-                    child: TextField(
-                      controller: filePathCtrl,
-                      style: const TextStyle(fontSize: 12),
-                      decoration: InputDecoration(
-                        hintText: '指定凭证文件完整路径（留空则自动存至 Downloads）',
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
-                        border: OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(Taste.radiusControl),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: SizedBox(
+              width: double.infinity,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      '包含全部已挂载好分数账号、登录凭证、hfs-session-id Cookie Jar、绑定学生及快照：',
+                      style: TextStyle(fontSize: 12, color: Taste.muted),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 34,
+                      child: TextField(
+                        controller: filePathCtrl,
+                        style: const TextStyle(fontSize: 12),
+                        decoration: InputDecoration(
+                          hintText: '指定凭证文件完整路径（留空则自动存至 Downloads）',
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          border: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(Taste.radiusControl),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          try {
-                            final saved = await _saveCredentialFileToDisk(
-                              ctrl.text,
-                              customPath: filePathCtrl.text,
-                            );
-                            filePathCtrl.text = saved;
-                            setModalState(() {
-                              modalFeedback = '凭证文件已保存至：$saved';
-                            });
-                          } catch (e) {
-                            setModalState(() {
-                              modalFeedback = '保存文件失败：$e';
-                            });
-                          }
-                        },
-                        icon: const Icon(Icons.download_outlined, size: 15),
-                        label: const Text('导出为文件',
-                            style: TextStyle(fontSize: 12)),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          final p = filePathCtrl.text.trim();
-                          if (p.isEmpty) {
-                            setModalState(() {
-                              modalFeedback = '请先在上方输入框填写要读取的 .json 凭证文件路径';
-                            });
-                            return;
-                          }
-                          try {
-                            final raw = await File(p).readAsString();
-                            ctrl.text = raw;
-                            setModalState(() {
-                              modalFeedback = '已从文件读取凭证内容，点击下方「导入并覆盖保存」即可生效';
-                            });
-                          } catch (e) {
-                            setModalState(() {
-                              modalFeedback = '读取凭证文件失败：$e';
-                            });
-                          }
-                        },
-                        icon: const Icon(Icons.folder_open_outlined, size: 15),
-                        label: const Text('从文件读取',
-                            style: TextStyle(fontSize: 12)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            try {
+                              final saved = await _saveCredentialFileToDisk(
+                                ctrl.text,
+                                customPath: filePathCtrl.text,
+                              );
+                              filePathCtrl.text = saved;
+                              setModalState(() {
+                                modalFeedback = '凭证文件已保存至：$saved';
+                              });
+                            } catch (e) {
+                              setModalState(() {
+                                modalFeedback = '保存文件失败：$e';
+                              });
+                            }
+                          },
+                          icon: const Icon(Icons.download_outlined, size: 15),
+                          label: const Text('导出为文件',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            final p = filePathCtrl.text.trim();
+                            if (p.isEmpty) {
+                              setModalState(() {
+                                modalFeedback = '请先在上方输入框填写要读取的 .json 凭证文件路径';
+                              });
+                              return;
+                            }
+                            try {
+                              final raw = await File(p).readAsString();
+                              ctrl.text = raw;
+                              setModalState(() {
+                                modalFeedback = '已从文件读取凭证内容，点击下方「导入并覆盖保存」即可生效';
+                              });
+                            } catch (e) {
+                              setModalState(() {
+                                modalFeedback = '读取凭证文件失败：$e';
+                              });
+                            }
+                          },
+                          icon:
+                              const Icon(Icons.folder_open_outlined, size: 15),
+                          label: const Text('从文件读取',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                    if (modalFeedback != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Taste.pillPosBg,
+                          borderRadius:
+                              BorderRadius.circular(Taste.radiusControl),
+                        ),
+                        child: SelectableText(
+                          modalFeedback!,
+                          style: const TextStyle(
+                              fontSize: 12, color: Taste.pillPosInk),
+                        ),
                       ),
                     ],
-                  ),
-                  if (modalFeedback != null) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Taste.pillPosBg,
-                        borderRadius:
-                            BorderRadius.circular(Taste.radiusControl),
-                      ),
-                      child: SelectableText(
-                        modalFeedback!,
-                        style: const TextStyle(
-                            fontSize: 12, color: Taste.pillPosInk),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: ctrl,
+                      maxLines: 11,
+                      style: const TextStyle(
+                          fontFamily: 'monospace', fontSize: 11),
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        hintText: '粘贴备份的好分数凭证 JSON 以恢复多账号…',
                       ),
                     ),
                   ],
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: ctrl,
-                    maxLines: 11,
-                    style:
-                        const TextStyle(fontFamily: 'monospace', fontSize: 11),
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      hintText: '粘贴备份的好分数凭证 JSON 以恢复多账号…',
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
           actions: [
-            TextButton.icon(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: ctrl.text));
-                setModalState(() {
-                  modalFeedback = '凭证 JSON 已复制到系统剪贴板';
-                });
-              },
-              icon: const Icon(Icons.copy, size: 14),
-              label: const Text('复制凭证内容'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('关闭'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: Taste.primary,
-                foregroundColor: Taste.primaryInk,
-              ),
-              onPressed: () async {
-                await widget.onImportConfigJson(ctrl.text);
-                if (ctx.mounted) Navigator.of(ctx).pop();
-                if (mounted) {
-                  setState(() => _statusMsg = '好分数凭证已成功导入并恢复');
-                }
-              },
-              child: const Text('导入并覆盖保存'),
+            OverflowBar(
+              spacing: 8,
+              overflowSpacing: 4,
+              alignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: ctrl.text));
+                    setModalState(() {
+                      modalFeedback = '凭证 JSON 已复制到系统剪贴板';
+                    });
+                  },
+                  icon: const Icon(Icons.copy, size: 14),
+                  label: const Text('复制凭证内容'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('关闭'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Taste.primary,
+                    foregroundColor: Taste.primaryInk,
+                  ),
+                  onPressed: () async {
+                    await widget.onImportConfigJson(ctrl.text);
+                    if (ctx.mounted) Navigator.of(ctx).pop();
+                    if (mounted) {
+                      setState(() => _statusMsg = '好分数凭证已成功导入并恢复');
+                    }
+                  },
+                  child: const Text('导入并覆盖保存'),
+                ),
+              ],
             ),
           ],
         ),
@@ -4672,22 +4978,34 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      '工作台设置与好分数上游只读诊断',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
+              LayoutBuilder(
+                builder: (ctx, box) {
+                  final compact = box.maxWidth < 420;
+                  return Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      SizedBox(
+                        width: compact ? box.maxWidth : null,
+                        child: Text(
+                          '工作台设置与好分数上游只读诊断',
+                          maxLines: compact ? 2 : 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 18),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  );
+                },
               ),
               const Divider(height: 16, color: Taste.border),
               Expanded(
@@ -4797,8 +5115,7 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
                           onPressed: () async {
                             await widget.onClearCache();
                             if (!mounted) return;
-                            setState(() =>
-                                _statusMsg = '已清空全部内存与本地缓存快照');
+                            setState(() => _statusMsg = '已清空全部内存与本地缓存快照');
                           },
                           icon: const Icon(Icons.cleaning_services_outlined,
                               size: 15),
@@ -4883,48 +5200,69 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
                                 },
                               ),
                               const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: DropdownButtonFormField<String>(
-                                      initialValue: _selectedDiagEndpoint,
-                                      isExpanded: true,
-                                      isDense: true,
-                                      decoration: const InputDecoration(
-                                        border: OutlineInputBorder(),
-                                        contentPadding: EdgeInsets.symmetric(
-                                            horizontal: 10, vertical: 6),
-                                      ),
-                                      items: [
-                                        for (final ep in _diagEndpoints)
-                                          DropdownMenuItem(
-                                            value: ep.path,
-                                            child: Text(
-                                              ep.label,
-                                              overflow: TextOverflow.ellipsis,
-                                              style:
-                                                  const TextStyle(fontSize: 12),
-                                            ),
-                                          ),
-                                      ],
-                                      onChanged: (v) {
-                                        if (v != null) {
-                                          setState(
-                                              () => _selectedDiagEndpoint = v);
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  OutlinedButton(
+                              LayoutBuilder(
+                                builder: (ctx, box) {
+                                  final compact = box.maxWidth < 420;
+                                  final probeButton = OutlinedButton(
                                     onPressed:
                                         _runningDiag ? null : _runDiagnostic,
                                     child: Text(
                                       _runningDiag ? '请求中…' : '直连探测',
                                       style: const TextStyle(fontSize: 12),
                                     ),
-                                  ),
-                                ],
+                                  );
+                                  final endpoint =
+                                      DropdownButtonFormField<String>(
+                                    initialValue: _selectedDiagEndpoint,
+                                    isExpanded: true,
+                                    isDense: true,
+                                    decoration: const InputDecoration(
+                                      border: OutlineInputBorder(),
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
+                                    ),
+                                    items: [
+                                      for (final ep in _diagEndpoints)
+                                        DropdownMenuItem(
+                                          value: ep.path,
+                                          child: Text(
+                                            ep.label,
+                                            overflow: TextOverflow.ellipsis,
+                                            style:
+                                                const TextStyle(fontSize: 12),
+                                          ),
+                                        ),
+                                    ],
+                                    onChanged: (v) {
+                                      if (v != null) {
+                                        setState(
+                                            () => _selectedDiagEndpoint = v);
+                                      }
+                                    },
+                                  );
+                                  return compact
+                                      ? Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.stretch,
+                                          children: [
+                                            endpoint,
+                                            const SizedBox(height: 8),
+                                            Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: probeButton,
+                                            ),
+                                          ],
+                                        )
+                                      : Row(
+                                          children: [
+                                            Expanded(child: endpoint),
+                                            const SizedBox(width: 8),
+                                            probeButton,
+                                          ],
+                                        );
+                                },
                               ),
                             ],
                           );
@@ -4958,26 +5296,35 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
                 ),
               ),
               const Divider(height: 16, color: Taste.border),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('取消'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Taste.primary,
-                      foregroundColor: Taste.primaryInk,
-                    ),
-                    onPressed: () {
-                      widget.onSaveSettings(_draft);
-                      Navigator.of(context).pop();
-                    },
-                    child: const Text('保存设置'),
-                  ),
-                ],
+              LayoutBuilder(
+                builder: (ctx, box) {
+                  final compact = box.maxWidth < 420;
+                  final buttons = OverflowBar(
+                    alignment: MainAxisAlignment.end,
+                    spacing: 8,
+                    overflowSpacing: 4,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('取消'),
+                      ),
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Taste.primary,
+                          foregroundColor: Taste.primaryInk,
+                        ),
+                        onPressed: () {
+                          widget.onSaveSettings(_draft);
+                          Navigator.of(context).pop();
+                        },
+                        child: const Text('保存设置'),
+                      ),
+                    ],
+                  );
+                  return compact
+                      ? Align(alignment: Alignment.centerRight, child: buttons)
+                      : buttons;
+                },
               ),
             ],
           ),
@@ -5133,20 +5480,18 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
           // Header & Subject Metric Selector
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 12,
-              runSpacing: 8,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+            child: LayoutBuilder(
+              builder: (ctx, box) {
+                final title = Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     const Icon(Icons.show_chart, size: 18, color: Taste.accent),
                     const SizedBox(width: 8),
-                    Flexible(
+                    Expanded(
                       child: Text(
                         '$_metricSubject 历次成绩变化趋势折线图与学科均衡度',
+                        maxLines: box.maxWidth < 620 ? 2 : 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontFamily: Taste.fontFamily,
                           fontSize: 16,
@@ -5156,8 +5501,8 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
                       ),
                     ),
                   ],
-                ),
-                Wrap(
+                );
+                final controls = Wrap(
                   spacing: 8,
                   runSpacing: 6,
                   crossAxisAlignment: WrapCrossAlignment.center,
@@ -5182,8 +5527,7 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
                     ChoiceChip(
                       visualDensity: VisualDensity.compact,
                       selected: !_usePercentageRatio,
-                      label:
-                          const Text('原始分值', style: TextStyle(fontSize: 11)),
+                      label: const Text('原始分值', style: TextStyle(fontSize: 11)),
                       onSelected: (_) =>
                           setState(() => _usePercentageRatio = false),
                     ),
@@ -5196,8 +5540,26 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
                           setState(() => _usePercentageRatio = true),
                     ),
                   ],
-                ),
-              ],
+                );
+                if (box.maxWidth < 620) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      title,
+                      const SizedBox(height: 8),
+                      Align(alignment: Alignment.centerLeft, child: controls),
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(child: title),
+                    const SizedBox(width: 12),
+                    controls,
+                  ],
+                );
+              },
             ),
           ),
           Container(
@@ -5236,8 +5598,7 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
             padding: const EdgeInsets.all(16),
             child: LayoutBuilder(
               builder: (ctx, box) {
-                final showRadarSideBySide =
-                    box.maxWidth >= 820 &&
+                final showRadarSideBySide = box.maxWidth >= 820 &&
                     curExam != null &&
                     curExam.papers.length >= 3;
                 final lineChartWidget = _buildInteractiveLineChart(
@@ -5304,8 +5665,8 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
     final selectedIdx = points.indexWhere(
       (p) => p.exam.examId == selectedExam?.examId,
     );
-    final activeIdx = _hoveredIndex ??
-        (selectedIdx >= 0 ? selectedIdx : points.length - 1);
+    final activeIdx =
+        _hoveredIndex ?? (selectedIdx >= 0 ? selectedIdx : points.length - 1);
     final activePt = points[activeIdx.clamp(0, points.length - 1)];
 
     return Column(
@@ -5319,13 +5680,10 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
             borderRadius: BorderRadius.circular(Taste.radiusControl),
             border: Border.all(color: Taste.border),
           ),
-          child: Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              Row(
+          child: LayoutBuilder(
+            builder: (ctx, box) {
+              final compact = box.maxWidth < 420;
+              final activeTitle = Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
@@ -5340,6 +5698,8 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
                   Flexible(
                     child: Text(
                       '${formatDateMs(activePt.exam.time)} · ${activePt.exam.name}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -5348,16 +5708,34 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
                     ),
                   ),
                 ],
-              ),
-              Text(
+              );
+              final summary = Text(
                 '$_metricSubject：${activePt.subtitle}（点击折线节点可切换考试与答题卡）',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: Taste.numStyle(
                   size: 12,
                   weight: FontWeight.w500,
                   color: Taste.accent,
                 ),
-              ),
-            ],
+              );
+              return compact
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        activeTitle,
+                        const SizedBox(height: 4),
+                        summary,
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(child: activeTitle),
+                        const SizedBox(width: 8),
+                        Expanded(child: summary),
+                      ],
+                    );
+            },
           ),
         ),
         const SizedBox(height: 10),
@@ -5448,34 +5826,42 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
                 widget.onSelectExam(exam, preferredSubject: p.subject);
               },
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
+                padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          p.subject,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: (_metricSubject == p.subject ||
-                                    widget.selectedSubject == p.subject)
-                                ? FontWeight.w700
-                                : FontWeight.w500,
-                            color: (_metricSubject == p.subject ||
-                                    widget.selectedSubject == p.subject)
-                                ? Taste.accent
-                                : Taste.text,
+                        Expanded(
+                          child: Text(
+                            p.subject,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: (_metricSubject == p.subject ||
+                                      widget.selectedSubject == p.subject)
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              color: (_metricSubject == p.subject ||
+                                      widget.selectedSubject == p.subject)
+                                  ? Taste.accent
+                                  : Taste.text,
+                            ),
                           ),
                         ),
-                        Text(
-                          '${p.scoreS}/${round1(p.manfen)} (${p.ratio ?? 0}%)',
-                          style: Taste.numStyle(
-                            size: 11,
-                            weight: FontWeight.w700,
-                            color: Taste.muted,
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            '${p.scoreS}/${round1(p.manfen)} (${p.ratio ?? 0}%)',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.right,
+                            style: Taste.numStyle(
+                              size: 11,
+                              weight: FontWeight.w700,
+                              color: Taste.muted,
+                            ),
                           ),
                         ),
                       ],

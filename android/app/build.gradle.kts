@@ -54,11 +54,10 @@ android {
             isMinifyEnabled = false
             isShrinkResources = false
             val releaseSigning = signingConfigs.findByName("release")
-            signingConfig = if (releaseSigning?.storeFile != null && releaseSigning.storeFile!!.exists()) {
-                releaseSigning
-            } else {
-                signingConfigs.getByName("debug")
+            check(releaseSigning?.storeFile != null && releaseSigning.storeFile!!.exists()) {
+                "Durable release keystore is required; refusing to sign with the ephemeral debug key"
             }
+            signingConfig = releaseSigning
         }
     }
 }
