@@ -45,14 +45,25 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze --no-pub
       - run: flutter test test/widget_test.dart
-      - run: flutter build apk --release --target-platform android-arm64
+      - name: Build signed Android APK (retry transient downloads)
+        run: |
+          for attempt in 1 2 3; do
+            if flutter build apk --release --target-platform android-arm64; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Android build attempt $attempt failed; retrying after transient dependency/network failure..." >&2
+              sleep 20
+            fi
+          done
+          exit 1
       - name: Package & verify Android APK signature
         run: |
           mkdir -p out
           cp build/app/outputs/flutter-apk/app-release.apk out/hfs_flutter_android_arm64.apk
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
           "$APKSIGNER" verify --print-certs out/hfs_flutter_android_arm64.apk
-          CERT_SHA256=$("$APKSIGNER" verify --print-certs out/hfs_flutter_android_arm64.apk 2>&1 | awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print $2}')
+          CERT_SHA256=$("$APKSIGNER" verify --print-certs out/hfs_flutter_android_arm64.apk 2>&1 | awk -F': ' '/certificate SHA-256 digest:/ {print $2; exit}')
           test "$CERT_SHA256" = "b3227391cd532acc2e3322521f97892262a0e828b61bbce03fb24b450169d346"
           sha256sum out/hfs_flutter_android_arm64.apk
       - uses: actions/upload-artifact@v4
