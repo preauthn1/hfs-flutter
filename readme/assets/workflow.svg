@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="390.747" viewBox="0 0 1200 390.747" data-theme="light" data-layout-contract="readable-v2" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="signal-flow" data-quality-profile="showcase">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="395.018" viewBox="0 0 1200 395.018" data-theme="light" data-layout-contract="readable-v2" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="signal-flow" data-quality-profile="showcase">
 <style>
 
 svg {
@@ -279,10 +279,10 @@ svg[data-preset="blueprint"] .c-lane {
   stroke-dasharray: 6,6;
 }
 </style>
-<metadata id="readmex-source-evidence">{&quot;schemaVersion&quot;:2,&quot;verified&quot;:true,&quot;repository&quot;:{&quot;mode&quot;:&quot;working-tree&quot;,&quot;label&quot;:&quot;Current working tree&quot;,&quot;linkMode&quot;:&quot;local-only&quot;},&quot;referenceCount&quot;:5,&quot;nodes&quot;:{&quot;auth_session&quot;:[{&quot;path&quot;:&quot;lib/hfs_client.dart&quot;,&quot;line&quot;:580,&quot;endLine&quot;:638,&quot;label&quot;:&quot;loginHfs&quot;,&quot;sha256&quot;:&quot;b4c45950be43c0b93edc25a39ff692c484f1f5c95bb4c197d89bdc7bdfef9883&quot;}],&quot;quota_guard&quot;:[{&quot;path&quot;:&quot;lib/hfs_models.dart&quot;,&quot;line&quot;:460,&quot;endLine&quot;:471,&quot;label&quot;:&quot;estimatedMaxQuota&quot;,&quot;sha256&quot;:&quot;e66eb49a1a2ffd43bb1b0e21621f5ecee95938a1dc224161a9b37473a2f874bf&quot;},{&quot;path&quot;:&quot;lib/taste_widgets.dart&quot;,&quot;line&quot;:1750,&quot;endLine&quot;:1825,&quot;label&quot;:&quot;confirmRebindGuard&quot;,&quot;sha256&quot;:&quot;1189a93831fc6cfca1908ea674f4e4912e5e4cedcb00ec0d8a940e94b5e9b9a5&quot;}],&quot;sheet_inspect&quot;:[{&quot;path&quot;:&quot;lib/hfs_client.dart&quot;,&quot;line&quot;:1080,&quot;endLine&quot;:1126,&quot;label&quot;:&quot;hydrateDashboard&quot;,&quot;sha256&quot;:&quot;b4c45950be43c0b93edc25a39ff692c484f1f5c95bb4c197d89bdc7bdfef9883&quot;},{&quot;path&quot;:&quot;lib/answer_sheet_painter.dart&quot;,&quot;line&quot;:67,&quot;endLine&quot;:90,&quot;label&quot;:&quot;prepareTargetImage&quot;,&quot;sha256&quot;:&quot;5bd206537e942b89a114fb5572ca1e1454e8f30f6867890a0b9ab4478707bf95&quot;}]}}</metadata>
-<rect width="1200" height="390.747" fill="#f4f9fc"/>
+<metadata id="readmex-source-evidence">{&quot;schemaVersion&quot;:2,&quot;verified&quot;:true,&quot;repository&quot;:{&quot;mode&quot;:&quot;working-tree&quot;,&quot;label&quot;:&quot;Current working tree&quot;,&quot;linkMode&quot;:&quot;local-only&quot;},&quot;referenceCount&quot;:3,&quot;nodes&quot;:{&quot;request&quot;:[{&quot;path&quot;:&quot;lib/taste_widgets.dart&quot;,&quot;line&quot;:395,&quot;endLine&quot;:430,&quot;sha256&quot;:&quot;1189a93831fc6cfca1908ea674f4e4912e5e4cedcb00ec0d8a940e94b5e9b9a5&quot;}],&quot;tool&quot;:[{&quot;path&quot;:&quot;lib/main.dart&quot;,&quot;line&quot;:78,&quot;endLine&quot;:110,&quot;sha256&quot;:&quot;93284708e87636a820ebbbceb40a37a5d6487926e744bf4ab745e2ab7008b093&quot;}],&quot;reply&quot;:[{&quot;path&quot;:&quot;lib/answer_sheet_painter.dart&quot;,&quot;line&quot;:602,&quot;endLine&quot;:635,&quot;sha256&quot;:&quot;5bd206537e942b89a114fb5572ca1e1454e8f30f6867890a0b9ab4478707bf95&quot;}]}}</metadata>
+<rect width="1200" height="395.018" fill="#f4f9fc"/>
 <g id="diagram-content" transform="scale(1.0676156583629892)">
-        <title id="archify-diagram-title">主工作流：账号挂载、换绑风控与答题卡阅卷</title>
+        <title id="archify-diagram-title">只读主流程：账号、考试与答题卡</title>
         <desc id="archify-diagram-description">由 Archify 生成的工作流图。</desc>
         <!-- Definitions -->
         <defs>
@@ -307,8 +307,8 @@ svg[data-preset="blueprint"] .c-lane {
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Swimlanes -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-0" x="40" y="52" width="1068" height="190" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="54" y="84" class="t-dim" font-size="28" font-weight="600">01 / 客户端直连主流程</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-0" x="40" y="52" width="1068" height="194" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="84" class="t-dim" font-size="28" font-weight="600">01 / 本人授权账号</text>
 
         <!-- Phase headers -->
 
@@ -317,56 +317,50 @@ svg[data-preset="blueprint"] .c-lane {
 
 
         <!-- Edge paths -->
-        <path data-edge-from="auth_session" data-edge-to="quota_guard" data-edge-label="会话 Cookie" data-edge-key="0" data-edge-id="step_1_2" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="220,102;220,86;573,86;573,102" d="M 220 102 L 220 86 L 573 86 L 573 102" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="quota_guard" data-edge-to="sheet_inspect" data-edge-label="选定学生" data-edge-key="1" data-edge-id="step_2_3" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="587,102;587,86;940,86;940,102" d="M 587 102 L 587 86 L 940 86 L 940 102" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="request" data-edge-to="tool" data-edge-key="0" data-edge-id="dispatch" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="380,172;420,172" d="M 380 172 L 420 172" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="tool" data-edge-to="reply" data-edge-key="1" data-edge-id="result" data-composition-routing="workflow-v2-auto" data-edge-role="" data-composition-points="740,172;780,172" d="M 740 172 L 780 172" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
 
         <!-- Nodes -->
-        <g id="node-auth_session" data-node-id="auth_session" data-node-label="1. 挂载会话" aria-label="聚焦1. 挂载会话，账密或微信免密, 客户端直连主流程" data-node-kind="frontend" data-node-sublabel="账密或微信免密" data-node-context="客户端直连主流程">
-          <title>1. 挂载会话 · 账密或微信免密 · 客户端直连主流程</title>
-          <rect x="60" y="102" width="320" height="136" rx="6" class="c-mask"/>
-          <rect x="60" y="102" width="320" height="136" rx="6" class="c-frontend" stroke-width="1.5"/>
+        <g id="node-request" data-node-id="request" data-node-label="添加账号" aria-label="聚焦添加账号，本人凭证, 本人授权账号" data-node-kind="frontend" data-node-sublabel="本人凭证" data-node-context="本人授权账号">
+          <title>添加账号 · 本人凭证 · 本人授权账号</title>
+          <rect x="60" y="102" width="320" height="140" rx="6" class="c-mask"/>
+          <rect x="60" y="102" width="320" height="140" rx="6" class="c-frontend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(66 108) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="220" y="171" class="t-primary" font-size="40" font-weight="600" text-anchor="middle">1. 挂载会话</text>
-          <text data-detail="context" x="220" y="218.6" class="t-muted" font-size="28" text-anchor="middle">账密或微信免密</text>
+          <text data-node-label="" data-detail-anchor="" x="220" y="157" class="t-primary" font-size="40" font-weight="600" text-anchor="middle">添加账号</text>
+          <text data-detail="context" x="220" y="194" class="t-muted" font-size="28" text-anchor="middle">本人凭证</text>
         </g>
 
-        <g id="node-quota_guard" data-node-id="quota_guard" data-node-label="2. 换绑风控" aria-label="聚焦2. 换绑风控，配额与 4137 拦截, 客户端直连主流程" data-node-kind="security" data-node-sublabel="配额与 4137 拦截" data-node-context="客户端直连主流程">
-          <title>2. 换绑风控 · 配额与 4137 拦截 · 客户端直连主流程</title>
-          <rect x="420" y="102" width="320" height="136" rx="6" class="c-mask"/>
-          <rect x="420" y="102" width="320" height="136" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(426 108) scale(0.6875)">
-            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
-            <path d="m5.8 8 1.5 1.5 3-3"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="580" y="171" class="t-primary" font-size="40" font-weight="600" text-anchor="middle">2. 换绑风控</text>
-          <text data-detail="context" x="580" y="218.6" class="t-muted" font-size="28" text-anchor="middle">配额与 4137 拦截</text>
-        </g>
-
-        <g id="node-sheet_inspect" data-node-id="sheet_inspect" data-node-label="3. 原图阅卷" aria-label="聚焦3. 原图阅卷，合成红笔批改层, 客户端直连主流程" data-node-kind="backend" data-node-sublabel="合成红笔批改层" data-node-context="客户端直连主流程">
-          <title>3. 原图阅卷 · 合成红笔批改层 · 客户端直连主流程</title>
-          <rect x="780" y="102" width="320" height="136" rx="6" class="c-mask"/>
-          <rect x="780" y="102" width="320" height="136" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(786 108) scale(0.6875)">
+        <g id="node-tool" data-node-id="tool" data-node-label="选择考试" aria-label="聚焦选择考试，学生与分科, 本人授权账号" data-node-kind="backend" data-node-sublabel="学生与分科" data-node-context="本人授权账号">
+          <title>选择考试 · 学生与分科 · 本人授权账号</title>
+          <rect x="420" y="102" width="320" height="140" rx="6" class="c-mask"/>
+          <rect x="420" y="102" width="320" height="140" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(426 108) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="940" y="171" class="t-primary" font-size="40" font-weight="600" text-anchor="middle">3. 原图阅卷</text>
-          <text data-detail="context" x="940" y="218.6" class="t-muted" font-size="28" text-anchor="middle">合成红笔批改层</text>
+          <text data-node-label="" data-detail-anchor="" x="580" y="157" class="t-primary" font-size="40" font-weight="600" text-anchor="middle">选择考试</text>
+          <text data-detail="context" x="580" y="194" class="t-muted" font-size="28" text-anchor="middle">学生与分科</text>
+        </g>
+
+        <g id="node-reply" data-node-id="reply" data-node-label="查看答题卡" aria-label="聚焦查看答题卡，本地批改层, 本人授权账号" data-node-kind="database" data-node-sublabel="本地批改层" data-node-context="本人授权账号">
+          <title>查看答题卡 · 本地批改层 · 本人授权账号</title>
+          <rect x="780" y="102" width="320" height="140" rx="6" class="c-mask"/>
+          <rect x="780" y="102" width="320" height="140" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(786 108) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="938" y="157" class="t-primary" font-size="40" font-weight="600" text-anchor="middle">查看答题卡</text>
+          <text data-detail="context" x="940" y="194" class="t-muted" font-size="28" text-anchor="middle">本地批改层</text>
         </g>
 
         <!-- Edge labels -->
-        <g data-detail="context" data-edge-from="auth_session" data-edge-to="quota_guard" data-edge-label="会话 Cookie" data-edge-key="0" data-edge-id="step_1_2">
-          <rect x="289.5" y="50" width="214" height="36" rx="3" class="c-mask"/>
-          <text x="396.5" y="76" class="t-edge-emphasis" font-size="28" text-anchor="middle">会话 Cookie</text>
-        </g>
-        <g data-detail="context" data-edge-from="quota_guard" data-edge-to="sheet_inspect" data-edge-label="选定学生" data-edge-key="1" data-edge-id="step_2_3">
-          <rect x="683.5" y="50" width="160" height="36" rx="3" class="c-mask"/>
-          <text x="763.5" y="76" class="t-edge-default" font-size="28" text-anchor="middle">选定学生</text>
-        </g>
+
+
 
         <!-- Legend -->
 

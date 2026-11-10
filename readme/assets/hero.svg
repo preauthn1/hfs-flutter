@@ -1,90 +1,24 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="460" viewBox="0 0 1200 460" role="img" aria-labelledby="hero-title hero-desc">
-  <title id="hero-title">hfs_flutter — 好分数原生直连工作台</title>
-  <desc id="hero-desc">100% 原生 Flutter 与 Canvas 渲染的好分数跨平台客户端，仅直连三大官方 HTTPS 域名，支持微信小程序免密会话、动态配额换绑风控与答题卡红笔批改合成。</desc>
-
-  <!-- Background -->
-  <rect width="1200" height="460" fill="#F5F7F9"/>
-  <rect x="24" y="24" width="1152" height="412" rx="18" fill="#FFFFFF" stroke="#E8EAEC" stroke-width="2"/>
-
-  <!-- Left Column: Identity & Value -->
-  <g id="identity">
-    <rect x="64" y="58" width="176" height="34" rx="17" fill="#E0F2FE" stroke="#BAE6FD" stroke-width="1.5"/>
-    <circle cx="84" cy="75" r="5" fill="#1B6C80"/>
-    <text x="98" y="81" fill="#0C4A6E" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="18" font-weight="700">Taste-Skill 2.5</text>
-
-    <rect x="252" y="58" width="218" height="34" rx="17" fill="#DCFAE5" stroke="#A7F3D0" stroke-width="1.5"/>
-    <text x="270" y="81" fill="#04250E" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="18" font-weight="700">零 WebView · 纯官方直连</text>
-
-    <text x="64" y="152" fill="#131416" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="56" font-weight="800">hfs_flutter</text>
-    <text x="368" y="150" fill="#1B6C80" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="28" font-weight="700">v2.6.4</text>
-
-    <text x="64" y="198" fill="#131416" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="26" font-weight="700">好分数跨平台原生直连工作台</text>
-    <text x="64" y="234" fill="#5D5F60" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="20" font-weight="500">支持 Android · Windows · Linux，内置换绑风控与答题卡红笔合成</text>
-  </g>
-
-  <!-- Left Column: Three Verifiable Proof Pillars -->
-  <g id="pillars">
-    <!-- Pillar 1 -->
-    <rect x="64" y="264" width="520" height="42" rx="8" fill="#F4F6F8" stroke="#E8EAEC" stroke-width="1.5"/>
-    <rect x="76" y="275" width="20" height="20" rx="5" fill="#1B6C80"/>
-    <text x="86" y="291" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="15" font-weight="700">1</text>
-    <text x="108" y="291" fill="#131416" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="19" font-weight="700">官方域名白名单</text>
-    <text x="256" y="291" fill="#5D5F60" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="600">hfs-be / hfs-wechat-be / yj-oss</text>
-
-    <!-- Pillar 2 -->
-    <rect x="64" y="316" width="520" height="42" rx="8" fill="#F4F6F8" stroke="#E8EAEC" stroke-width="1.5"/>
-    <rect x="76" y="327" width="20" height="20" rx="5" fill="#92400E"/>
-    <text x="86" y="343" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="15" font-weight="700">2</text>
-    <text x="108" y="343" fill="#131416" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="19" font-weight="700">动态配额与风控</text>
-    <text x="256" y="343" fill="#92400E" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="600">min(6, count(-1)+3) · 4137 拦截</text>
-
-    <!-- Pillar 3 -->
-    <rect x="64" y="368" width="520" height="42" rx="8" fill="#F4F6F8" stroke="#E8EAEC" stroke-width="1.5"/>
-    <rect x="76" y="379" width="20" height="20" rx="5" fill="#C4242A"/>
-    <text x="86" y="395" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="15" font-weight="700">3</text>
-    <text x="108" y="395" fill="#131416" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="19" font-weight="700">Canvas 原生阅卷</text>
-    <text x="264" y="395" fill="#5D5F60" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="18" font-weight="600">@c_ 坐标红笔叠加 · 原图/合成导出</text>
-  </g>
-
-  <!-- Right Column: Answer Sheet & Quota Workbench Motif -->
-  <g id="workbench-preview">
-    <rect x="624" y="52" width="516" height="358" rx="14" fill="#F5F7F9" stroke="#CDCED1" stroke-width="2"/>
-
-    <!-- Workbench Top Bar -->
-    <rect x="624" y="52" width="516" height="48" rx="14" fill="#131416"/>
-    <circle cx="650" cy="76" r="6" fill="#C4242A"/>
-    <circle cx="670" cy="76" r="6" fill="#A86F0C"/>
-    <circle cx="690" cy="76" r="6" fill="#1E7B4F"/>
-    <text x="716" y="82" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="18" font-weight="700">答题卡批改叠加层 · Canvas 矢量渲染</text>
-    <rect x="1028" y="62" width="94" height="28" rx="6" fill="#1B6C80"/>
-    <text x="1075" y="81" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="16" font-weight="700">导出 PNG</text>
-
-    <!-- Answer Sheet Paper Card -->
-    <rect x="646" y="116" width="472" height="196" rx="10" fill="#FFFFFF" stroke="#E8EAEC" stroke-width="1.5"/>
-
-    <!-- Simulated Answer Lines -->
-    <text x="668" y="148" fill="#5D5F60" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="18" font-weight="700">第 18 题 · 主观解答区 (OSS 原图裁切映射)</text>
-    <line x1="668" y1="168" x2="1088" y2="168" stroke="#E8EAEC" stroke-width="2"/>
-    <rect x="668" y="184" width="240" height="10" rx="5" fill="#EBEDEE"/>
-    <rect x="668" y="208" width="310" height="10" rx="5" fill="#EBEDEE"/>
-    <rect x="668" y="232" width="190" height="10" rx="5" fill="#EBEDEE"/>
-    <rect x="668" y="256" width="275" height="10" rx="5" fill="#EBEDEE"/>
-
-    <!-- Red Grading Overlay Box -->
-    <rect x="658" y="122" width="448" height="174" rx="8" fill="#C4242A" fill-opacity="0.05" stroke="#C4242A" stroke-width="2.5" stroke-dasharray="8 5"/>
-
-    <!-- Score Badge Pill -->
-    <rect x="942" y="130" width="152" height="36" rx="8" fill="#C4242A"/>
-    <text x="1018" y="154" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="19" font-weight="800">得分 8.5 / 10</text>
-
-    <!-- Red Check / Deduction Mark -->
-    <path d="M 976 238 L 998 260 L 1046 206" fill="none" stroke="#C4242A" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="1054" y="258" fill="#C4242A" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="22" font-weight="800">-1.5</text>
-
-    <!-- Bottom Guard Status Bar inside Workbench -->
-    <rect x="646" y="326" width="472" height="66" rx="10" fill="#FFFBEB" stroke="#FDE68A" stroke-width="1.5"/>
-    <text x="666" y="354" fill="#92400E" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="18" font-weight="700">换绑风控门禁：已绑 4 / 上限 5 人 (-1 活名额: 2)</text>
-    <text x="666" y="379" fill="#831C1E" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="17" font-weight="600">自动拦截 bindStudent 非空目标，阻断 4137 删源风险</text>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="460" viewBox="0 0 1200 460" role="img" aria-labelledby="title desc">
+<title id="title">hfs_flutter：考试与答题卡的原生工作台</title>
+<desc id="desc">以答题纸裁切框和本地批改叠加为母题的机制示意，不是真实账号截图。应用提供账号管理、考试查看和答题卡导出。</desc>
+<rect width="1200" height="460" fill="#f0f5f8"/>
+<g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Noto Sans CJK SC, sans-serif">
+<text x="60" y="98" font-size="62" font-weight="750" fill="#102c40">hfs_flutter</text>
+<text x="60" y="158" font-size="40" font-weight="650" fill="#18657a">把考试放回桌面</text>
+<text x="60" y="221" font-size="31" fill="#395668">本人账号 · 成绩 · 答题卡</text>
+<path d="M60 258H540" stroke="#c6d8e1" stroke-width="2"/>
+<text x="60" y="311" font-size="30" fill="#183c50">原生界面 / 本地批改层</text>
+<text x="60" y="362" font-size="28" fill="#395668">Android · Windows · Linux</text>
+<text x="60" y="414" font-size="24" fill="#597183">非官方客户端 · 机制示意</text>
+<g transform="translate(655 48)">
+<rect width="480" height="364" rx="20" fill="#fff" stroke="#c6d8e1" stroke-width="2"/>
+<text x="30" y="54" font-size="30" font-weight="650" fill="#183c50">答题卡 → 批改叠加</text>
+<path d="M30 80H450" stroke="#dce6ec" stroke-width="2"/>
+<rect x="28" y="106" width="424" height="192" rx="8" fill="#f7fafb"/>
+<path d="M52 140H290M52 174H350M52 208H310M52 242H255" stroke="#c6d2db" stroke-width="9" stroke-linecap="round"/>
+<g id="grading-overlay">
+<rect x="40" y="118" width="400" height="168" rx="7" fill="#d54d4d" fill-opacity=".04" stroke="#bd3d47" stroke-width="3" stroke-dasharray="10 6"/>
+<path d="M334 220L360 244L406 181" stroke="#bd3d47" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<text x="30" y="337" font-size="27" fill="#18657a">原图与合成图分别导出</text>
+</g></g></svg>
