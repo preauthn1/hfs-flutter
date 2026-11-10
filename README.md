@@ -13,7 +13,7 @@ sha256sum -c SHA256SUMS.txt --ignore-missing
 
 校验通过的文件应显示 `OK`；这只是预期格式，不是本次下载校验或应用登录实测的记录。请勿把“构建成功”理解为账号业务已验证。
 
-> **使用与许可边界**：这是非官方客户端，只使用本人或获得授权的账号与凭证，不提供短信、验证码或访问权限绕过。仓库目前没有应用源码的顶层许可证，公开可见不等于已授予开源再分发权；内置字体的 [SIL Open Font License 1.1](assets/fonts/LICENSE.txt) 只覆盖对应字体。
+> **使用与许可边界**：这是非官方客户端，只使用本人或获得授权的账号与凭证，不提供短信、验证码或访问权限绕过。主项目采用 [MIT 许可证](LICENSE)；内置字体的 [SIL Open Font License 1.1](assets/fonts/LICENSE.txt) 只覆盖对应字体。
 
 ![hfs_flutter：从考试列表到本地答题卡批改叠加的原生工作台](readme/assets/hero.svg)
 
@@ -92,4 +92,4 @@ flutter pub get
 
 ## 许可证
 
-**应用源码：未发现顶层许可证，授权范围尚未明确。** 字体许可单独见 [SIL Open Font License 1.1](assets/fonts/LICENSE.txt)，不能据此推定整个客户端采用该许可证。
+主项目采用 [MIT 许可证](LICENSE)。字体继续遵循 [SIL Open Font License 1.1](assets/fonts/LICENSE.txt)。
