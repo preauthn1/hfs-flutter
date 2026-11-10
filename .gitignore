@@ -46,3 +46,4 @@ app.*.map.json
 # Local build products
 /dist/
 /.verify-v260/
+.readmex/

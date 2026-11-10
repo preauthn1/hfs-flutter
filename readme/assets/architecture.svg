@@ -1,0 +1,433 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="460" viewBox="0 0 1200 460" data-theme="light" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="editorial" data-quality-profile="showcase" data-diagram-type="architecture" data-reader-fit="authored-height">
+<style>
+
+svg {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono CJK SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', monospace;
+}
+
+.c-grid {
+  stroke: #d8d0c2;
+  fill: none;
+}
+
+.c-mask {
+  fill: #fbf8f1;
+  stroke: none;
+}
+
+.c-lane-rule {
+  stroke: #b8aa94;
+  fill: none;
+  opacity: 0.7;
+}
+
+.c-lane-wash {
+  fill: rgba(229, 221, 207, 0.42);
+  stroke: none;
+}
+
+.c-frontend {
+  fill: rgba(31, 117, 126, 0.09);
+  stroke: #287e84;
+}
+
+.c-backend {
+  fill: rgba(42, 119, 75, 0.09);
+  stroke: #397b53;
+}
+
+.c-database {
+  fill: rgba(105, 75, 130, 0.09);
+  stroke: #765d86;
+}
+
+.c-cloud {
+  fill: rgba(157, 103, 31, 0.1);
+  stroke: #9a671f;
+}
+
+.c-security {
+  fill: rgba(153, 58, 52, 0.09);
+  stroke: #9e463f;
+}
+
+.c-messagebus {
+  fill: rgba(182, 70, 27, 0.09);
+  stroke: #ad4b25;
+}
+
+.c-external {
+  fill: rgba(101, 91, 75, 0.09);
+  stroke: #746b5e;
+}
+
+.t-primary {
+  fill: #242018;
+}
+
+.t-muted {
+  fill: #6f6658;
+}
+
+.t-dim {
+  fill: #a09788;
+}
+
+.t-frontend {
+  fill: #287e84;
+}
+
+.t-backend {
+  fill: #397b53;
+}
+
+.t-database {
+  fill: #765d86;
+}
+
+.t-cloud {
+  fill: #9a671f;
+}
+
+.t-security {
+  fill: #9e463f;
+}
+
+.t-messagebus {
+  fill: #ad4b25;
+}
+
+.t-external {
+  fill: #746b5e;
+}
+
+.t-edge-default {
+  fill: #8a806f;
+}
+
+.t-edge-emphasis {
+  fill: #bb4c23;
+}
+
+.t-edge-security {
+  fill: #9e463f;
+}
+
+.t-edge-dashed {
+  fill: #765d86;
+}
+
+svg .semantic-sigil {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.76;
+}
+
+svg .semantic-sigil > * {
+  vector-effect: non-scaling-stroke;
+}
+
+svg .semantic-sigil .sigil-fill {
+  fill: currentColor;
+  stroke: none;
+}
+
+svg .s-frontend {
+  color: #287e84;
+}
+
+svg .s-backend {
+  color: #397b53;
+}
+
+svg .s-database {
+  color: #765d86;
+}
+
+svg .s-cloud {
+  color: #9a671f;
+}
+
+svg .s-security {
+  color: #9e463f;
+}
+
+svg .s-messagebus {
+  color: #ad4b25;
+}
+
+svg .s-external {
+  color: #746b5e;
+}
+
+svg .brand-mark-badge {
+  fill: #fff;
+  stroke: none;
+}
+
+svg .brand-mark-frame {
+  fill: none;
+  stroke: #cbd5e1;
+  stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
+}
+
+svg .brand-mark-fallback {
+  fill: none;
+  stroke: #475569;
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+svg[data-preset="blueprint"] .brand-mark-badge,
+svg[data-preset="blueprint"] .brand-mark-frame {
+  rx: 1px;
+}
+
+svg [data-detail-anchor] {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.a-default {
+  stroke: #8a806f;
+  fill: none;
+}
+
+.a-emphasis {
+  stroke: #bb4c23;
+  fill: none;
+}
+
+.a-security {
+  stroke: #9e463f;
+  fill: none;
+  stroke-dasharray: 5,5;
+}
+
+.a-dashed {
+  stroke: #765d86;
+  fill: none;
+  stroke-dasharray: 4,4;
+}
+
+.m-default {
+  fill: #8a806f;
+}
+
+.m-emphasis {
+  fill: #bb4c23;
+}
+
+.m-security {
+  fill: #9e463f;
+}
+
+.m-dashed {
+  fill: #765d86;
+}
+
+svg [data-node-id] > .c-mask {
+  fill-opacity: 1;
+}
+
+svg[data-preset="editorial"] .c-grid {
+  stroke-dasharray: 1 4;
+  opacity: 0.48;
+}
+
+svg[data-preset="editorial"] .c-region {
+  fill: rgba(251, 191, 36, 0.05);
+  stroke-dasharray: 9 4;
+}
+
+svg[data-preset="blueprint"] .c-grid {
+  stroke-dasharray: 1 3;
+  opacity: 0.78;
+}
+
+svg[data-preset="blueprint"] .c-region {
+  fill: rgba(251, 191, 36, 0.05);
+  stroke-dasharray: 12 4 2 4;
+}
+
+svg[data-preset="blueprint"] .c-security-group,
+svg[data-preset="blueprint"] .c-lane {
+  stroke-dasharray: 7 3;
+}
+
+.c-security-group {
+  fill: transparent;
+  stroke: #9e463f;
+  stroke-dasharray: 4,4;
+}
+
+.c-region {
+  fill: rgba(251, 191, 36, 0.05);
+  stroke: #9a671f;
+  stroke-dasharray: 8,4;
+}
+
+.c-lane {
+  fill: rgba(229, 221, 207, 0.42);
+  stroke: #b8aa94;
+  stroke-dasharray: 6,6;
+}
+</style>
+<metadata id="readmex-source-evidence">{&quot;schemaVersion&quot;:2,&quot;verified&quot;:true,&quot;repository&quot;:{&quot;mode&quot;:&quot;working-tree&quot;,&quot;label&quot;:&quot;Current working tree&quot;,&quot;linkMode&quot;:&quot;local-only&quot;},&quot;referenceCount&quot;:8,&quot;nodes&quot;:{&quot;workbench&quot;:[{&quot;path&quot;:&quot;lib/main.dart&quot;,&quot;line&quot;:38,&quot;endLine&quot;:88,&quot;label&quot;:&quot;HfsFlutterApp&quot;,&quot;sha256&quot;:&quot;93284708e87636a820ebbbceb40a37a5d6487926e744bf4ab745e2ab7008b093&quot;},{&quot;path&quot;:&quot;lib/answer_sheet_painter.dart&quot;,&quot;line&quot;:44,&quot;endLine&quot;:90,&quot;label&quot;:&quot;GradingOverlay&quot;,&quot;sha256&quot;:&quot;5bd206537e942b89a114fb5572ca1e1454e8f30f6867890a0b9ab4478707bf95&quot;},{&quot;path&quot;:&quot;lib/taste_widgets.dart&quot;,&quot;line&quot;:79,&quot;endLine&quot;:105,&quot;label&quot;:&quot;DialogInsets&quot;,&quot;sha256&quot;:&quot;1189a93831fc6cfca1908ea674f4e4912e5e4cedcb00ec0d8a940e94b5e9b9a5&quot;}],&quot;store&quot;:[{&quot;path&quot;:&quot;lib/hfs_models.dart&quot;,&quot;line&quot;:459,&quot;endLine&quot;:487,&quot;label&quot;:&quot;QuotaAndAccountJson&quot;,&quot;sha256&quot;:&quot;e66eb49a1a2ffd43bb1b0e21621f5ecee95938a1dc224161a9b37473a2f874bf&quot;}],&quot;client&quot;:[{&quot;path&quot;:&quot;lib/hfs_client.dart&quot;,&quot;line&quot;:26,&quot;endLine&quot;:76,&quot;label&quot;:&quot;HfsUpstreamClient&quot;,&quot;sha256&quot;:&quot;b4c45950be43c0b93edc25a39ff692c484f1f5c95bb4c197d89bdc7bdfef9883&quot;}],&quot;hfs_api&quot;:[{&quot;path&quot;:&quot;lib/hfs_client.dart&quot;,&quot;line&quot;:31,&quot;endLine&quot;:34,&quot;label&quot;:&quot;kHfsApiHost&quot;,&quot;sha256&quot;:&quot;b4c45950be43c0b93edc25a39ff692c484f1f5c95bb4c197d89bdc7bdfef9883&quot;}],&quot;hfs_wechat&quot;:[{&quot;path&quot;:&quot;lib/hfs_client.dart&quot;,&quot;line&quot;:32,&quot;endLine&quot;:45,&quot;label&quot;:&quot;kHfsWechatHost&quot;,&quot;sha256&quot;:&quot;b4c45950be43c0b93edc25a39ff692c484f1f5c95bb4c197d89bdc7bdfef9883&quot;}],&quot;hfs_oss&quot;:[{&quot;path&quot;:&quot;lib/hfs_client.dart&quot;,&quot;line&quot;:33,&quot;endLine&quot;:54,&quot;label&quot;:&quot;kHfsOssHost&quot;,&quot;sha256&quot;:&quot;b4c45950be43c0b93edc25a39ff692c484f1f5c95bb4c197d89bdc7bdfef9883&quot;}]}}</metadata>
+<rect width="1200" height="460" fill="#f2eee5"/>
+<g id="diagram-content" transform="scale(1)">
+        <title id="archify-diagram-title">好分数原生直连工作台：客户端模块与三大官方上游</title>
+        <desc id="archify-diagram-description">由 Archify 生成的架构图。</desc>
+        <!-- Definitions -->
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-default" />
+          </marker>
+          <marker id="arrowhead-emphasis" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-emphasis" />
+          </marker>
+          <marker id="arrowhead-security" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-security" />
+          </marker>
+          <marker id="arrowhead-dashed" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-dashed" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" class="c-grid" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background Grid -->
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- Boundaries (behind everything) -->
+
+
+        <!-- Connection paths (before components for correct z-order) -->
+        <g data-graph-role="automatic-crossover">
+          <path data-graph-role="automatic-crossover-underlay" d="M 330 153 L 365 153 Q 373 153 373 161 L 373 240 Q 373 248 381 248 L 416 248" fill="none" stroke="#fbf8f1" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="workbench" data-edge-to="client" data-edge-label="HTTPS" data-edge-key="0" data-edge-id="ui_to_client" data-composition-points="330,153;373,153;373,248;416,248" data-composition-crossover="halo" data-composition-independent="true" d="M 330 153 L 365 153 Q 373 153 373 161 L 373 240 Q 373 248 381 248 L 416 248" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        </g>
+        <g data-graph-role="automatic-crossover">
+          <path data-graph-role="automatic-crossover-underlay" d="M 185 218 L 185 278" fill="none" stroke="#fbf8f1" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="workbench" data-edge-to="store" data-edge-label="持久化" data-edge-key="1" data-edge-id="ui_to_store" data-composition-points="185,218;185,278" data-composition-crossover="halo" data-composition-independent="true" d="M 185 218 L 185 278" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover">
+          <path data-graph-role="automatic-crossover-underlay" d="M 696 234 L 776 234 Q 784 234 784 226 L 784 120 Q 784 112 792 112 L 872 112" fill="none" stroke="#fbf8f1" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="client" data-edge-to="hfs_api" data-edge-label="App API" data-edge-key="2" data-edge-id="client_to_be" data-composition-points="696,234;784,234;784,112;872,112" data-composition-crossover="halo" data-composition-independent="true" d="M 696 234 L 776 234 Q 784 234 784 226 L 784 120 Q 784 112 792 112 L 872 112" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        </g>
+        <g data-graph-role="automatic-crossover">
+          <path data-graph-role="automatic-crossover-underlay" d="M 696 276 L 776 276 Q 784 276 784 268 L 784 256 Q 784 248 792 248 L 872 248" fill="none" stroke="#fbf8f1" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="client" data-edge-to="hfs_wechat" data-edge-key="3" data-edge-id="client_to_wx" data-composition-points="696,276;784,276;784,248;872,248" data-composition-crossover="halo" data-composition-independent="true" d="M 696 276 L 776 276 Q 784 276 784 268 L 784 256 Q 784 248 792 248 L 872 248" class="a-security" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
+        </g>
+        <g data-graph-role="automatic-crossover">
+          <path data-graph-role="automatic-crossover-underlay" d="M 556 316 L 556 332 Q 556 340 564 340 L 840 340 Q 848 340 848 348 L 848 376 Q 848 384 856 384 L 872 384" fill="none" stroke="#fbf8f1" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="client" data-edge-to="hfs_oss" data-edge-label="原图拉取" data-edge-key="4" data-edge-id="client_to_oss" data-composition-points="556,316;556,340;848,340;848,384;872,384" data-composition-crossover="halo" data-composition-independent="true" d="M 556 316 L 556 332 Q 556 340 564 340 L 840 340 Q 848 340 848 348 L 848 376 Q 848 384 856 384 L 872 384" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+
+        <!-- Components -->
+        <g id="node-workbench" data-node-id="workbench" data-node-label="原生工作台" aria-label="聚焦原生工作台，Canvas 阅卷画布, 架构组件" data-node-kind="frontend" data-node-sublabel="Canvas 阅卷画布" data-node-context="架构组件">
+          <title>原生工作台 · Canvas 阅卷画布 · 架构组件</title>
+          <rect x="40" y="88" width="290" height="130" rx="6" class="c-mask"/>
+          <rect x="40" y="88" width="290" height="130" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(46 94) scale(0.6875)">
+            <rect x="2" y="3" width="12" height="10" rx="2"/>
+            <path d="M2 6.5h12"/>
+            <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
+            <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="185" y="145" class="t-primary" font-size="40" font-weight="600" text-anchor="middle">原生工作台</text>
+        <text data-detail="context" x="185" y="179" class="t-muted" font-size="28" text-anchor="middle">Canvas 阅卷画布</text>
+        </g>
+
+        <g id="node-store" data-node-id="store" data-node-label="本地会话库" aria-label="聚焦本地会话库，账号与配额快照, 架构组件" data-node-kind="database" data-node-sublabel="账号与配额快照" data-node-context="架构组件">
+          <title>本地会话库 · 账号与配额快照 · 架构组件</title>
+          <rect x="40" y="278" width="290" height="130" rx="6" class="c-mask"/>
+          <rect x="40" y="278" width="290" height="130" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(46 284) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="185" y="335" class="t-primary" font-size="40" font-weight="600" text-anchor="middle">本地会话库</text>
+        <text data-detail="context" x="185" y="369" class="t-muted" font-size="28" text-anchor="middle">账号与配额快照</text>
+        </g>
+
+        <g id="node-client" data-node-id="client" data-node-label="直连客户端" aria-label="聚焦直连客户端，域名白名单门禁, 架构组件" data-node-kind="security" data-node-sublabel="域名白名单门禁" data-node-context="架构组件">
+          <title>直连客户端 · 域名白名单门禁 · 架构组件</title>
+          <rect x="416" y="180" width="280" height="136" rx="6" class="c-mask"/>
+          <rect x="416" y="180" width="280" height="136" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(422 186) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="556" y="240" class="t-primary" font-size="40" font-weight="600" text-anchor="middle">直连客户端</text>
+        <text data-detail="context" x="556" y="274" class="t-muted" font-size="28" text-anchor="middle">域名白名单门禁</text>
+        </g>
+
+        <g id="node-hfs_api" data-node-id="hfs_api" data-node-label="App 核心后端" aria-label="聚焦App 核心后端，hfs-be, 架构组件" data-node-kind="backend" data-node-sublabel="hfs-be" data-node-context="架构组件">
+          <title>App 核心后端 · hfs-be · 架构组件</title>
+          <rect x="872" y="56" width="288" height="112" rx="6" class="c-mask"/>
+          <rect x="872" y="56" width="288" height="112" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(878 62) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="1016" y="104" class="t-primary" font-size="38.8" font-weight="600" text-anchor="middle">App 核心后端</text>
+        <text data-detail="context" x="1016" y="138" class="t-muted" font-size="28" text-anchor="middle">hfs-be</text>
+        </g>
+
+        <g id="node-hfs_wechat" data-node-id="hfs_wechat" data-node-label="微信端后端" aria-label="聚焦微信端后端，hfs-wechat-be, 架构组件" data-node-kind="cloud" data-node-sublabel="hfs-wechat-be" data-node-context="架构组件">
+          <title>微信端后端 · hfs-wechat-be · 架构组件</title>
+          <rect x="872" y="192" width="288" height="112" rx="6" class="c-mask"/>
+          <rect x="872" y="192" width="288" height="112" rx="6" class="c-cloud" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(878 198) scale(0.6875)">
+            <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="1016" y="240" class="t-primary" font-size="40" font-weight="600" text-anchor="middle">微信端后端</text>
+        <text data-detail="context" x="1016" y="274" class="t-muted" font-size="28" text-anchor="middle">hfs-wechat-be</text>
+        </g>
+
+        <g id="node-hfs_oss" data-node-id="hfs_oss" data-node-label="阅卷原图库" aria-label="聚焦阅卷原图库，yj-oss, 架构组件" data-node-kind="external" data-node-sublabel="yj-oss" data-node-context="架构组件">
+          <title>阅卷原图库 · yj-oss · 架构组件</title>
+          <rect x="872" y="328" width="288" height="112" rx="6" class="c-mask"/>
+          <rect x="872" y="328" width="288" height="112" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(878 334) scale(0.6875)">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="1016" y="376" class="t-primary" font-size="40" font-weight="600" text-anchor="middle">阅卷原图库</text>
+        <text data-detail="context" x="1016" y="410" class="t-muted" font-size="28" text-anchor="middle">yj-oss</text>
+        </g>
+
+        <!-- Connection labels -->
+        <g data-detail="context" data-edge-from="workbench" data-edge-to="client" data-edge-label="HTTPS" data-edge-key="0" data-edge-id="ui_to_client">
+          <rect x="379" y="141.875" width="106" height="36" rx="3" class="c-mask"/>
+          <text x="432" y="167.875" class="t-edge-emphasis" font-size="28" text-anchor="middle">HTTPS</text>
+        </g>
+        <g data-detail="context" data-edge-from="workbench" data-edge-to="store" data-edge-label="持久化" data-edge-key="1" data-edge-id="ui_to_store">
+          <rect x="55" y="225" width="124" height="36" rx="3" class="c-mask"/>
+          <text x="117" y="251" class="t-edge-default" font-size="28" text-anchor="middle">持久化</text>
+        </g>
+        <g data-detail="context" data-edge-from="client" data-edge-to="hfs_api" data-edge-label="App API" data-edge-key="2" data-edge-id="client_to_be">
+          <rect x="713" y="137" width="142" height="36" rx="3" class="c-mask"/>
+          <text x="784" y="163" class="t-edge-emphasis" font-size="28" text-anchor="middle">App API</text>
+        </g>
+
+        <g data-detail="context" data-edge-from="client" data-edge-to="hfs_oss" data-edge-label="原图拉取" data-edge-key="4" data-edge-id="client_to_oss">
+          <rect x="622" y="334" width="160" height="36" rx="3" class="c-mask"/>
+          <text x="702" y="360" class="t-edge-default" font-size="28" text-anchor="middle">原图拉取</text>
+        </g>
+
+        <!-- Boundary labels (foreground masks keep routes out of titles) -->
+
+
+        <!-- Legend -->
+
+      
+</g>
+</svg>
