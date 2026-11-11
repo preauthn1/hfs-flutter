@@ -345,6 +345,21 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
     expect(find.text('总分 历次成绩变化趋势折线图与学科均衡度'), findsOneWidget);
 
+    // Verify top exam DropdownButtonFormField2 opens a wide searchable menu on mobile (360px)
+    // with 52px touch targets and does not get cramped or truncated.
+    final examDropdownFinder = find.byKey(const ValueKey('top_exam_sel_ex_1'));
+    expect(examDropdownFinder, findsOneWidget);
+    await tester.tap(examDropdownFinder);
+    await tester.pumpAndSettle();
+    expect(find.text('搜索考试名称或日期…'), findsOneWidget);
+    final menuTextRect = tester.getRect(
+      find.textContaining('期中联考').last,
+    );
+    expect(menuTextRect.width, greaterThanOrEqualTo(220));
+    // Close dropdown menu by tapping the menu item
+    await tester.tap(find.textContaining('期中联考').last);
+    await tester.pumpAndSettle();
+
     // Scroll down to verify the score matrix table renders without overflow
     final verticalScrollable = find.byWidgetPredicate(
       (w) => w is Scrollable && w.axisDirection == AxisDirection.down,

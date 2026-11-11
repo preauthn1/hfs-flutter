@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:modal_bottom_sheet/modal_bottom_sheet.dart' as mbs;
 
 import 'hfs_client.dart';
 import 'hfs_models.dart';
@@ -357,9 +358,10 @@ class HfsImageClipboardAndExporter {
     final viewPadding = MediaQuery.paddingOf(context);
     final isMobile = screenSize.width < 860;
     final menuWidth = math.min(
-      320.0,
-      math.max(200.0, screenSize.width - 28),
+      340.0,
+      math.max(220.0, screenSize.width - 24),
     );
+    final rowHeight = isMobile ? 52.0 : 46.0;
     int itemCount = 3; // copy_current, download_current, cancel
     if (hasOverlay && showOverlay) {
       itemCount += 2; // copy_raw, download_raw
@@ -370,158 +372,314 @@ class HfsImageClipboardAndExporter {
     if (onOpenLightbox != null) {
       itemCount += 1;
     }
-    final estimatedMenuHeight = itemCount * 46.0 + 36.0;
+    final estimatedMenuHeight = itemCount * rowHeight + 42.0;
     final topReserve = math.max(16.0, viewPadding.top + 54.0);
     final bottomReserve = math.max(
         isMobile ? 88.0 : 24.0, viewPadding.bottom + (isMobile ? 78.0 : 20.0));
-    final maxDx = math.max(14.0, screenSize.width - menuWidth - 14.0);
+    final maxDx = math.max(12.0, screenSize.width - menuWidth - 12.0);
     final maxDy = math.max(
       topReserve,
       screenSize.height - bottomReserve - estimatedMenuHeight,
     );
-    final safeDx = globalPosition.dx.clamp(14.0, maxDx);
+    final safeDx = globalPosition.dx.clamp(12.0, maxDx);
     final safeDy = globalPosition.dy.clamp(topReserve, maxDy);
 
     Widget menuItem(String text, IconData icon, Color color) {
-      return Row(
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w500,
-                color: color,
+      return SizedBox(
+        width: double.infinity,
+        child: Row(
+          children: [
+            Icon(icon, size: 17, color: color),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                text,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.25,
+                  fontWeight: FontWeight.w500,
+                  color: color,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    String? selected;
+    if (isMobile) {
+      Widget sheetActionRow(
+        BuildContext ctx,
+        String val,
+        String text,
+        IconData icon,
+        Color color,
+      ) {
+        return InkWell(
+          onTap: () => Navigator.of(ctx).pop(val),
+          child: Container(
+            height: 52,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            alignment: Alignment.centerLeft,
+            child: menuItem(text, icon, color),
+          ),
+        );
+      }
+
+      selected = await mbs.showCustomModalBottomSheet<String>(
+        context: context,
+        expand: false,
+        enableDrag: true,
+        isDismissible: true,
+        useRootNavigator: false,
+        barrierColor: Colors.black54,
+        duration: const Duration(milliseconds: 160),
+        containerWidget: (ctx, animation, child) {
+          final vp = MediaQuery.viewPaddingOf(ctx);
+          final navReserve = math.max(72.0, vp.bottom + 66.0);
+          return Padding(
+            padding: EdgeInsets.fromLTRB(12, 16, 12, navReserve),
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Material(
+                  color: Colors.white,
+                  surfaceTintColor: Colors.transparent,
+                  elevation: 8,
+                  clipBehavior: Clip.antiAlias,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: const BorderSide(color: Color(0xFFE8EAEC)),
+                  ),
+                  child: child,
+                ),
+              ),
+            ),
+          );
+        },
+        builder: (ctx) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(top: 8, bottom: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFCDCED1),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            sheetActionRow(
+              ctx,
+              'copy_current',
+              hasOverlay && showOverlay ? '复制图片（含红笔批改层）' : '复制图片到剪贴板',
+              Icons.copy_all_outlined,
+              const Color(0xFF131416),
+            ),
+            if (hasOverlay && showOverlay)
+              sheetActionRow(
+                ctx,
+                'copy_raw',
+                '复制纯原图（不含批改框）',
+                Icons.image_outlined,
+                const Color(0xFF5D5F60),
+              ),
+            const Divider(height: 1, color: Color(0xFFE8EAEC)),
+            sheetActionRow(
+              ctx,
+              'download_current',
+              hasOverlay && showOverlay
+                  ? '保存至下载目录（含批改层 .png）'
+                  : '保存图片至下载目录 (.png)',
+              Icons.download_outlined,
+              const Color(0xFF1B6C80),
+            ),
+            if (hasOverlay && showOverlay)
+              sheetActionRow(
+                ctx,
+                'download_raw',
+                '保存纯原图至下载目录 (.png)',
+                Icons.file_download_outlined,
+                const Color(0xFF5D5F60),
+              ),
+            if (onOpenLightbox != null) ...[
+              const Divider(height: 1, color: Color(0xFFE8EAEC)),
+              sheetActionRow(
+                ctx,
+                'lightbox',
+                '全屏无损放大阅卷 (支持 ←/→ 切图)',
+                Icons.zoom_out_map,
+                const Color(0xFF131416),
+              ),
+            ],
+            const Divider(height: 1, color: Color(0xFFE8EAEC)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(6),
+                onTap: () => Navigator.of(ctx).pop('cancel'),
+                child: Container(
+                  width: double.infinity,
+                  constraints: const BoxConstraints(minHeight: 42),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF4F6F8),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFCDCED1)),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.close, size: 15, color: Color(0xFF131416)),
+                      SizedBox(width: 6),
+                      Text(
+                        '取消',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF131416),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      selected = await showMenu<String>(
+        context: context,
+        position: RelativeRect.fromSize(
+          Rect.fromLTWH(safeDx, safeDy, 1, 1),
+          screenSize,
+        ),
+        constraints: BoxConstraints(
+          minWidth: menuWidth,
+          maxWidth: menuWidth,
+        ),
+        color: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 6,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: const BorderSide(color: Color(0xFFE8EAEC)),
+        ),
+        items: <PopupMenuEntry<String>>[
+          PopupMenuItem<String>(
+            value: 'copy_current',
+            height: rowHeight,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: menuItem(
+              hasOverlay && showOverlay ? '复制图片（含红笔批改层）' : '复制图片到剪贴板',
+              Icons.copy_all_outlined,
+              const Color(0xFF131416),
+            ),
+          ),
+          if (hasOverlay && showOverlay)
+            PopupMenuItem<String>(
+              value: 'copy_raw',
+              height: rowHeight,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: menuItem(
+                '复制纯原图（不含批改框）',
+                Icons.image_outlined,
+                const Color(0xFF5D5F60),
+              ),
+            ),
+          const PopupMenuDivider(height: 6),
+          PopupMenuItem<String>(
+            value: 'download_current',
+            height: rowHeight,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: menuItem(
+              hasOverlay && showOverlay
+                  ? '保存至下载目录（含批改层 .png）'
+                  : '保存图片至下载目录 (.png)',
+              Icons.download_outlined,
+              const Color(0xFF1B6C80),
+            ),
+          ),
+          if (hasOverlay && showOverlay)
+            PopupMenuItem<String>(
+              value: 'download_raw',
+              height: rowHeight,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: menuItem(
+                '保存纯原图至下载目录 (.png)',
+                Icons.file_download_outlined,
+                const Color(0xFF5D5F60),
+              ),
+            ),
+          if (Platform.isWindows)
+            PopupMenuItem<String>(
+              value: 'save_as_dialog',
+              height: rowHeight,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: menuItem(
+                '图片另存为… (选择文件夹)',
+                Icons.folder_open_outlined,
+                const Color(0xFF131416),
+              ),
+            ),
+          if (onOpenLightbox != null) ...[
+            const PopupMenuDivider(height: 6),
+            PopupMenuItem<String>(
+              value: 'lightbox',
+              height: rowHeight,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: menuItem(
+                '全屏无损放大阅卷 (支持 ←/→ 切图)',
+                Icons.zoom_out_map,
+                const Color(0xFF131416),
+              ),
+            ),
+          ],
+          const PopupMenuDivider(height: 6),
+          PopupMenuItem<String>(
+            value: 'cancel',
+            height: rowHeight,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(minHeight: 38),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF4F6F8),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFCDCED1)),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.close, size: 15, color: Color(0xFF131416)),
+                  SizedBox(width: 6),
+                  Text(
+                    '取消',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF131416),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ],
       );
     }
-
-    final selected = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromSize(
-        Rect.fromLTWH(safeDx, safeDy, 1, 1),
-        screenSize,
-      ),
-      constraints: BoxConstraints(
-        minWidth: menuWidth,
-        maxWidth: menuWidth,
-      ),
-      color: Colors.white,
-      surfaceTintColor: Colors.transparent,
-      elevation: 6,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: const BorderSide(color: Color(0xFFE8EAEC)),
-      ),
-      items: <PopupMenuEntry<String>>[
-        PopupMenuItem<String>(
-          value: 'copy_current',
-          height: 44,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: menuItem(
-            hasOverlay && showOverlay ? '复制图片（含红笔批改层）' : '复制图片到剪贴板',
-            Icons.copy_all_outlined,
-            const Color(0xFF131416),
-          ),
-        ),
-        if (hasOverlay && showOverlay)
-          PopupMenuItem<String>(
-            value: 'copy_raw',
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: menuItem(
-              '复制纯原图（不含批改框）',
-              Icons.image_outlined,
-              const Color(0xFF5D5F60),
-            ),
-          ),
-        const PopupMenuDivider(height: 6),
-        PopupMenuItem<String>(
-          value: 'download_current',
-          height: 44,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: menuItem(
-            hasOverlay && showOverlay
-                ? '保存至下载目录（含批改层 .png）'
-                : '保存图片至下载目录 (.png)',
-            Icons.download_outlined,
-            const Color(0xFF1B6C80),
-          ),
-        ),
-        if (hasOverlay && showOverlay)
-          PopupMenuItem<String>(
-            value: 'download_raw',
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: menuItem(
-              '保存纯原图至下载目录 (.png)',
-              Icons.file_download_outlined,
-              const Color(0xFF5D5F60),
-            ),
-          ),
-        if (Platform.isWindows)
-          PopupMenuItem<String>(
-            value: 'save_as_dialog',
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: menuItem(
-              '图片另存为… (选择文件夹)',
-              Icons.folder_open_outlined,
-              const Color(0xFF131416),
-            ),
-          ),
-        if (onOpenLightbox != null) ...[
-          const PopupMenuDivider(height: 6),
-          PopupMenuItem<String>(
-            value: 'lightbox',
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: menuItem(
-              '全屏无损放大阅卷 (支持 ←/→ 切图)',
-              Icons.zoom_out_map,
-              const Color(0xFF131416),
-            ),
-          ),
-        ],
-        const PopupMenuDivider(height: 6),
-        PopupMenuItem<String>(
-          value: 'cancel',
-          height: 44,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF4F6F8),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: const Color(0xFFCDCED1)),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.close, size: 15, color: Color(0xFF131416)),
-                SizedBox(width: 6),
-                Text(
-                  '取消',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF131416),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
 
     if (selected == null || selected == 'cancel' || !context.mounted) return;
     if (selected == 'lightbox') {
