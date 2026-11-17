@@ -90,6 +90,18 @@ flutter pub get
 
 上游协议变化可能造成登录、成绩或试卷读取失效；不承诺与所有旧备份兼容，也不以界面风险提示代替服务端保护。
 
-## 许可证
+## Android 文件保存与权限
+
+Android 端不申请读写外部存储权限，也不直接写 `/storage/emulated/0/Download`：
+
+- Android 10 及以上使用 `MediaStore.Downloads`，通过 `content://` URI 写入公共 `Downloads`；
+- Android 9 及以下使用系统 `ACTION_CREATE_DOCUMENT` 文件保存器；
+- 凭证 JSON 导入使用 `ACTION_OPEN_DOCUMENT`，不会读取任意路径；
+- 账号、设置和成绩快照继续保存在应用私有 `SharedPreferences`，无需存储权限；
+- 图片复制到剪贴板不产生文件，不需要存储权限；
+- Android 清单只保留 `INTERNET`，不使用 `MANAGE_EXTERNAL_STORAGE` 或过时的 `WRITE_EXTERNAL_STORAGE`；同时关闭云备份和设备迁移，避免账号凭证、Cookie 与成绩快照通过 Android 备份面泄露。
+
+Android 返回的是系统文档 URI，不是伪造的本地文件路径。保存失败、取消或文件读取失败都会返回到界面提示，不再静默回退到临时目录。
+
 
 主项目采用 [MIT 许可证](LICENSE)。字体继续遵循 [SIL Open Font License 1.1](assets/fonts/LICENSE.txt)。

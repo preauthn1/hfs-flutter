@@ -10,6 +10,7 @@ import 'package:modal_bottom_sheet/modal_bottom_sheet.dart' as mbs;
 import 'hfs_client.dart';
 import 'hfs_models.dart';
 import 'win32_native.dart';
+import 'android_storage.dart';
 
 /// Gallery item descriptor for multi-image Lightbox navigation (`←` / `→` keyboard switching)
 class LightboxGalleryItem {
@@ -246,8 +247,12 @@ class HfsImageClipboardAndExporter {
     return false;
   }
 
-  /// Resolve the user's real OS Downloads folder (respecting Windows `FOLDERID_Downloads` on D:/E: drives)
+  /// Resolve desktop Downloads locations only. Android uses MediaStore through
+  /// [saveBytesToUserDownloads], so it never guesses a writable public path.
   static Future<Directory> resolveDownloadsDirectory() async {
+    if (Platform.isAndroid) {
+      throw UnsupportedError('Android must use MediaStore rather than a file path');
+    }
     final sep = Platform.pathSeparator;
     final candidates = <String>[
       if (Platform.isWindows)
@@ -256,8 +261,6 @@ class HfsImageClipboardAndExporter {
         '${Platform.environment['USERPROFILE']}${sep}Downloads',
       if ((Platform.environment['HOME'] ?? '').isNotEmpty)
         '${Platform.environment['HOME']}${sep}Downloads',
-      if (Platform.isAndroid) '/storage/emulated/0/Download',
-      if (Platform.isAndroid) '/sdcard/Download',
       if ((Platform.environment['USERPROFILE'] ?? '').isNotEmpty)
         '${Platform.environment['USERPROFILE']}${sep}Desktop',
       if ((Platform.environment['HOME'] ?? '').isNotEmpty)
@@ -267,22 +270,50 @@ class HfsImageClipboardAndExporter {
       final path = raw.trim();
       if (path.isEmpty) continue;
       final dir = Directory(path);
-      if (await dir.exists()) {
-        return dir;
-      }
+      if (await dir.exists()) return dir;
     }
-    return Directory.systemTemp;
+    throw FileSystemException('找不到可用的 Downloads 目录');
   }
 
-  /// Save image bytes directly to the user's OS Downloads directory with browser-style collision numbering
+  /// Returns an Android `content://` URI or a desktop filesystem path.
+  static Future<String> saveBytesToUserDownloads({
+    required Uint8List bytes,
+    required String fileName,
+    required String mimeType,
+  }) async {
+    if (Platform.isAndroid) {
+      return HfsAndroidStorage.saveBytes(
+        bytes: bytes,
+        fileName: fileName,
+        mimeType: mimeType,
+      );
+    }
+    final dir = await resolveDownloadsDirectory();
+    final file = File('${dir.path}${Platform.pathSeparator}$fileName');
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  /// Save image bytes to a user-visible Downloads location. Android uses
+  /// MediaStore (API 29+) or the system document picker (API 28 and lower),
+  /// so no broad storage permission is requested.
   static Future<String> saveImageToDisk({
     required Uint8List bytes,
     required String label,
     String ext = 'png',
   }) async {
+    final stem = _sanitizeName(label);
+    if (Platform.isAndroid) {
+      return saveBytesToUserDownloads(
+        bytes: bytes,
+        fileName: '$stem.$ext',
+        mimeType: ext.toLowerCase() == 'jpg' || ext.toLowerCase() == 'jpeg'
+            ? 'image/jpeg'
+            : 'image/png',
+      );
+    }
     final dir = await resolveDownloadsDirectory();
     final sep = Platform.pathSeparator;
-    final stem = _sanitizeName(label);
     var candidate = File('${dir.path}$sep$stem.$ext');
     var suffix = 1;
     while (await candidate.exists() && suffix < 999) {

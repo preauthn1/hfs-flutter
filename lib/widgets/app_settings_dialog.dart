@@ -154,13 +154,20 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
         DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
     final defaultFileName = 'hfs_credentials_$ts.json';
 
-    if (customPath != null && customPath.trim().isNotEmpty) {
+    if (customPath != null && customPath.trim().isNotEmpty && !Platform.isAndroid) {
       final f = File(customPath.trim());
       await f.parent.create(recursive: true);
       await f.writeAsString(content);
       return f.path;
     }
 
+    if (Platform.isAndroid) {
+      return HfsImageClipboardAndExporter.saveBytesToUserDownloads(
+        bytes: Uint8List.fromList(utf8.encode(content)),
+        fileName: defaultFileName,
+        mimeType: 'application/json',
+      );
+    }
     final dlDir =
         await HfsImageClipboardAndExporter.resolveDownloadsDirectory();
     final f = File('${dlDir.path}${Platform.pathSeparator}$defaultFileName');
@@ -224,7 +231,9 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
                           controller: filePathCtrl,
                           style: const TextStyle(fontSize: 12),
                           decoration: InputDecoration(
-                            hintText: '指定凭证文件完整路径（留空则自动存至 Downloads）',
+                            hintText: Platform.isAndroid
+                                ? 'Android 导出将保存到系统 Downloads；读取会打开系统文件选择器'
+                                : '指定凭证文件完整路径（留空则自动存至 Downloads）',
                             contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 6),
                             border: OutlineInputBorder(
@@ -263,14 +272,16 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
                           OutlinedButton.icon(
                             onPressed: () async {
                               final p = filePathCtrl.text.trim();
-                              if (p.isEmpty) {
+                              if (!Platform.isAndroid && p.isEmpty) {
                                 setModalState(() {
                                   modalFeedback = '请先在上方输入框填写要读取的 .json 凭证文件路径';
                                 });
                                 return;
                               }
                               try {
-                                final raw = await File(p).readAsString();
+                                final raw = Platform.isAndroid
+                                    ? await HfsAndroidStorage.readTextDocument()
+                                    : await File(p).readAsString();
                                 ctrl.text = raw;
                                 setModalState(() {
                                   modalFeedback =

@@ -574,6 +574,13 @@ extension _HfsHomeStateActionsExt on _HfsHomeScreenState {
     });
   }
 
+  Future<String> _writeCredentialExportToDesktop(String raw, String fileName) async {
+    final dlDir = await HfsImageClipboardAndExporter.resolveDownloadsDirectory();
+    final fb = File('${dlDir.path}${Platform.pathSeparator}$fileName');
+    await fb.writeAsString(raw, flush: true);
+    return fb.path;
+  }
+
   Future<void> _exportCredentialFileDirect({HfsAccount? singleAccount}) async {
     try {
       final raw = await _buildExportConfigJson(singleAccount: singleAccount);
@@ -584,11 +591,13 @@ extension _HfsHomeStateActionsExt on _HfsHomeScreenState {
           .first;
       final suffix = singleAccount != null ? '_${singleAccount.id}' : '';
       final fileName = 'hfs_credentials${suffix}_$ts.json';
-      final dlDir =
-          await HfsImageClipboardAndExporter.resolveDownloadsDirectory();
-      final fb = File('${dlDir.path}${Platform.pathSeparator}$fileName');
-      await fb.writeAsString(raw, flush: true);
-      final savedPath = fb.path;
+      final savedPath = Platform.isAndroid
+          ? await HfsImageClipboardAndExporter.saveBytesToUserDownloads(
+              bytes: Uint8List.fromList(utf8.encode(raw)),
+              fileName: fileName,
+              mimeType: 'application/json',
+            )
+          : await _writeCredentialExportToDesktop(raw, fileName);
       await Clipboard.setData(ClipboardData(text: raw));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
