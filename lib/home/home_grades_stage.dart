@@ -117,7 +117,8 @@ extension _HfsHomeGradesStageExt on _HfsHomeScreenState {
                               stu.schoolName,
                             if (stu != null && stu.xuehao.isNotEmpty)
                               '准考证/考号 ${stu.xuehao}',
-                            '归属账号 ${dash.account.displayLabel}',
+                            if (dash.account.displayLabel.trim().isNotEmpty)
+                              '归属账号 ${dash.account.displayLabel}',
                           ].join(' · '),
                           maxLines: compact ? 2 : 1,
                           overflow: TextOverflow.ellipsis,
@@ -662,7 +663,7 @@ extension _HfsHomeGradesStageExt on _HfsHomeScreenState {
         children: [
           Text(
             label,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 12,
@@ -703,7 +704,7 @@ extension _HfsHomeGradesStageExt on _HfsHomeScreenState {
           const SizedBox(height: 4),
           Text(
             delta,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 12,

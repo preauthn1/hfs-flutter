@@ -436,6 +436,7 @@ extension _HfsHomeScaffoldAndTopBarExt on _HfsHomeScreenState {
                 label: '账号登录/注册',
                 icon: Icons.person_add_alt_outlined,
                 onTap: () => _openAuthOrRegisterModal(),
+                primary: true,
               ),
               const SizedBox(width: 5),
               _buildTopBarBtn(
@@ -587,7 +588,35 @@ extension _HfsHomeScaffoldAndTopBarExt on _HfsHomeScreenState {
     required IconData icon,
     required VoidCallback? onTap,
     bool compact = false,
+    bool primary = false,
   }) {
+    if (primary) {
+      return SizedBox(
+        height: 30,
+        child: FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: Taste.primary,
+            foregroundColor: Taste.primaryInk,
+            padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(Taste.radiusControl),
+            ),
+          ),
+          onPressed: onTap,
+          icon: Icon(icon, size: compact ? 13 : 14, color: Taste.primaryInk),
+          label: Text(
+            label,
+            style: TextStyle(
+              fontSize: compact ? 11.5 : 12,
+              fontWeight: FontWeight.w600,
+              color: Taste.primaryInk,
+            ),
+          ),
+        ),
+      );
+    }
     return SizedBox(
       height: 30,
       child: OutlinedButton.icon(
