@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' show PointerDeviceKind;
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:flutter/material.dart';
