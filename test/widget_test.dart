@@ -365,14 +365,15 @@ void main() {
 
     // Subject paper cards now sit directly under the student banner (hoisted
     // above the trend chart and the score matrix), so they are reachable with
-    // a short scroll. Open the mobile bottom-sheet PaperInspectionPane from a
-    // paper tile first, before the matrix which is now further down.
+    // a short scroll. Scroll until the tile's own "调阅答题卡 →" affordance is
+    // on-screen (the section header 已出分科目 scrolls into view before the
+    // tile footer does), then open the mobile bottom-sheet PaperInspectionPane.
     final verticalScrollable = find.byWidgetPredicate(
       (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
     );
     await tester.scrollUntilVisible(
-      find.textContaining('已出分科目：2 科'),
-      180.0,
+      find.text('调阅答题卡 →').first,
+      160.0,
       scrollable: verticalScrollable.first,
     );
     await tester.tap(find.text('调阅答题卡 →').first);
