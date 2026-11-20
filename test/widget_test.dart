@@ -364,19 +364,14 @@ void main() {
     await tester.pumpAndSettle();
 
     // Subject paper cards now sit directly under the student banner (hoisted
-    // above the trend chart and the score matrix), so they are reachable with
-    // a short scroll. Scroll until the tile's own "调阅答题卡 →" affordance is
-    // on-screen (the section header 已出分科目 scrolls into view before the
-    // tile footer does), then open the mobile bottom-sheet PaperInspectionPane.
-    final verticalScrollable = find.byWidgetPredicate(
-      (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
-    );
-    await tester.scrollUntilVisible(
-      find.text('调阅答题卡 →').first,
-      160.0,
-      scrollable: verticalScrollable.first,
-    );
-    await tester.tap(find.text('调阅答题卡 →').first);
+    // above the trend chart and the score matrix). The tiles are already built
+    // (within the ListView cache extent), so scrollUntilVisible would return
+    // without scrolling; use ensureVisible to actually bring the tile's
+    // "调阅答题卡 →" affordance into the viewport before tapping.
+    final viewAnswerSheet = find.text('调阅答题卡 →').first;
+    await tester.ensureVisible(viewAnswerSheet);
+    await tester.pumpAndSettle();
+    await tester.tap(viewAnswerSheet);
     await tester.pumpAndSettle();
     expect(find.text('语文 · 试卷与答题卡调阅'), findsOneWidget);
     await tester.tap(find.text('收起'));
@@ -384,6 +379,9 @@ void main() {
 
     // Continue scrolling down to verify the score matrix table (now below the
     // papers and trend chart) still renders without overflow.
+    final verticalScrollable = find.byWidgetPredicate(
+      (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+    );
     await tester.scrollUntilVisible(
       find.text('历次考试总分与单科矩阵'),
       250.0,
