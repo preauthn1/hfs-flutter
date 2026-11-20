@@ -343,7 +343,10 @@ void main() {
     tester.view.physicalSize = const Size(360, 800);
     await tester.tap(find.text('成绩单'));
     await tester.pump(const Duration(milliseconds: 250));
-    expect(find.text('总分 历次成绩变化趋势折线图与学科均衡度'), findsOneWidget);
+    // The student banner's exam dropdown sits at the top of tab 0; the trend
+    // chart title is now below the hoisted paper tiles, so assert it later
+    // after scrolling rather than here at the top of the stage.
+    expect(find.byKey(const ValueKey('top_exam_sel_ex_1')), findsOneWidget);
 
     // Verify top exam DropdownButtonFormField2 opens a wide searchable menu on mobile (360px)
     // with 52px touch targets and does not get cramped or truncated.
