@@ -20,7 +20,7 @@ extension _HfsHomeLeftDockExt on _HfsHomeScreenState {
               runSpacing: 6,
               children: [
                 const Text(
-                  '好分数账号与绑定学生',
+                  '账号与绑定学生',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -32,6 +32,14 @@ extension _HfsHomeLeftDockExt on _HfsHomeScreenState {
                   runSpacing: 4,
                   children: [
                     _miniIconBtn(
+                      label: _loadingFleet
+                          ? '遍历中 $_fleetProbeDone/$_fleetProbeTotal'
+                          : '遍历全部',
+                      onTap: (_loadingFleet || _accounts.isEmpty)
+                          ? null
+                          : _handleProbeAllAccountsFleet,
+                    ),
+                    _miniIconBtn(
                       label: '同步当前',
                       onTap: _loadingDashboard
                           ? null
@@ -42,13 +50,6 @@ extension _HfsHomeLeftDockExt on _HfsHomeScreenState {
                         label: '微信成绩',
                         onTap: _openMiniScoresModal,
                       ),
-                    if (curAcc?.wechatSessionCookie.trim().isNotEmpty == true)
-                      const SizedBox(width: 4),
-                    _miniIconBtn(
-                      label: '注册/登录',
-                      active: true,
-                      onTap: () => _openAuthOrRegisterModal(),
-                    ),
                   ],
                 ),
               ],
@@ -64,172 +65,27 @@ extension _HfsHomeLeftDockExt on _HfsHomeScreenState {
             ),
 
           const SizedBox(height: 8),
-          // Inline Quick-Add Account Box (#quick-add-box)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-            child: Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                const Text(
-                  '挂载更多好分数账号',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Taste.muted,
-                  ),
+          // Single unified account-mount entry:登录 / 注册 / 微信免密 all live
+          // in one modal, so the dock shows one obvious full-width button
+          // instead of a duplicate inline login form competing with the topbar.
+          SizedBox(
+            height: 38,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: Taste.primary,
+                foregroundColor: Taste.primaryInk,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(Taste.radiusControl),
                 ),
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: [
-                    _miniIconBtn(
-                      label: _showInlineQuickAddAccount ? '收起' : '＋ 快速加号',
-                      active: _showInlineQuickAddAccount,
-                      onTap: () => _setHomeState(() => _showInlineQuickAddAccount =
-                          !_showInlineQuickAddAccount),
-                    ),
-                    _miniIconBtn(
-                      label: '注册新号',
-                      onTap: () => _openAuthOrRegisterModal(),
-                    ),
-                  ],
-                ),
-              ],
+              ),
+              onPressed: () => _openAuthOrRegisterModal(),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text(
+                '登录 / 注册 / 挂载账号',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+              ),
             ),
           ),
-          if (_showInlineQuickAddAccount)
-            Container(
-              margin: const EdgeInsets.only(top: 6),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Taste.surface,
-                borderRadius: BorderRadius.circular(Taste.radiusCard),
-                border: Border.all(color: Taste.border),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField2<int>(
-                          value: _inlineAddRole,
-                          isExpanded: true,
-                          isDense: true,
-                          iconStyleData: Taste.dropdownIconStyle,
-                          dropdownStyleData: Taste.dropdownStyle(
-                            context,
-                            maxHeight: 220,
-                            dropdownWidth: Taste.resolveDropdownMenuWidth(
-                              context,
-                              preferredWidth: 168,
-                            ),
-                          ),
-                          menuItemStyleData: Taste.menuItemStyle(context),
-                          selectedItemBuilder: (ctx) => const [
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                '家长端 (可绑多人)',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Taste.text,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                '学生端',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Taste.text,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
-                          decoration: InputDecoration(
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 6),
-                            border: OutlineInputBorder(
-                              borderRadius:
-                                  BorderRadius.circular(Taste.radiusControl),
-                            ),
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 2,
-                              child: Text(
-                                '家长端 (可绑多人)',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                            DropdownMenuItem(
-                              value: 1,
-                              child: Text(
-                                '学生端',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ],
-                          onChanged: (v) {
-                            if (v != null) _setHomeState(() => _inlineAddRole = v);
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _compactInput(_inlineAddLabelCtrl, '备注名(选填)'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  _compactInput(_inlineAddLoginCtrl, '手机号 / 好分数账号'),
-                  const SizedBox(height: 8),
-                  _compactInput(
-                    _inlineAddPassCtrl,
-                    '好分数密码',
-                    obscure: true,
-                    onSubmitted: (_) => _handleInlineQuickAddAccount(),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 32,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Taste.primary,
-                        foregroundColor: Taste.primaryInk,
-                        shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(Taste.radiusControl),
-                        ),
-                      ),
-                      onPressed: _inlineAddingAccount
-                          ? null
-                          : _handleInlineQuickAddAccount,
-                      child: Text(
-                        _inlineAddingAccount ? '正在验证并拉取学生…' : '登录并挂载该账号',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
         ],
       ),
     );

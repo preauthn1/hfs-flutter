@@ -1067,6 +1067,11 @@ class ClassmateBindEntry {
   final String className;
   final bool hasStudentAccount;
   final bool hasParentAccount;
+  /// Internal account identifiers returned verbatim by `/v2/students/classmates`.
+  /// Keep them for local, read-only exposure auditing; never use them as a
+  /// credential or feed them into `/v2/mini/account-login`.
+  final String studentAccountUserId;
+  final String parentAccountUserId;
 
   const ClassmateBindEntry({
     required this.id,
@@ -1077,6 +1082,8 @@ class ClassmateBindEntry {
     this.className = '',
     required this.hasStudentAccount,
     required this.hasParentAccount,
+    this.studentAccountUserId = '',
+    this.parentAccountUserId = '',
   });
 
   factory ClassmateBindEntry.fromJson(Map<String, dynamic> m) {
@@ -1091,6 +1098,12 @@ class ClassmateBindEntry {
           : strOf(m['class']),
       hasStudentAccount: m['bindStudent'] is Map,
       hasParentAccount: m['bindParent'] is Map,
+      studentAccountUserId: m['bindStudent'] is Map
+          ? strOf((m['bindStudent'] as Map)['userId'])
+          : '',
+      parentAccountUserId: m['bindParent'] is Map
+          ? strOf((m['bindParent'] as Map)['userId'])
+          : '',
     );
   }
 }

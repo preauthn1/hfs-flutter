@@ -330,19 +330,50 @@ extension _HfsHomeStateActionsExt on _HfsHomeScreenState {
 
   Future<void> _handleProbeAllAccountsFleet() async {
     if (_loadingFleet) return;
+    if (_accounts.isEmpty) return;
     _setHomeState(() {
       _loadingFleet = true;
       _errorBanner = null;
+      _fleetProbeDone = 0;
+      _fleetProbeTotal = _accounts.length;
     });
+    final errors = <String>[];
     try {
-      for (final acc in _accounts) {
-        await _client.probeAllStudents(acc, forceRefreshAll: true);
+      // Traverse every account concurrently (bounded) instead of strictly
+      // serial, and refresh the fleet table as each account completes so a
+      // large pool no longer blocks behind one slow account.
+      final maxParallel = _settings.examConcurrency.clamp(1, 4);
+      final queue = List<HfsAccount>.from(_accounts);
+      Future<void> worker() async {
+        while (queue.isNotEmpty) {
+          final acc = queue.removeAt(0);
+          try {
+            await _client.probeAllStudents(acc, forceRefreshAll: true);
+          } catch (e) {
+            errors.add(
+              '${acc.displayLabel}: ${e.toString().replaceFirst('Exception: ', '')}',
+            );
+          }
+          if (!mounted) return;
+          _setHomeState(() {
+            _fleetProbeDone += 1;
+            _rebuildFleetRows();
+          });
+        }
       }
+
+      await Future.wait([
+        for (var i = 0; i < math.min(maxParallel, _accounts.length); i++)
+          worker(),
+      ]);
       await _persistAccountsAndSettings();
       if (!mounted) return;
       _setHomeState(() {
         _loadingFleet = false;
         _rebuildFleetRows();
+        if (errors.isNotEmpty) {
+          _errorBanner = '部分账号遍历失败（${errors.length}）：${errors.first}';
+        }
       });
     } catch (e) {
       if (!mounted) return;
@@ -367,52 +398,6 @@ extension _HfsHomeStateActionsExt on _HfsHomeScreenState {
       _rebuildFleetRows();
     });
     await _loadDashboardForCurrent(allowCache: false);
-  }
-
-  Future<void> _handleInlineQuickAddAccount() async {
-    final login = _inlineAddLoginCtrl.text.trim();
-    final pass = _inlineAddPassCtrl.text;
-    if (login.isEmpty || pass.isEmpty) {
-      _setHomeState(() => _errorBanner = '请填写快速挂载的好分数账号与密码');
-      return;
-    }
-    _setHomeState(() {
-      _inlineAddingAccount = true;
-      _errorBanner = null;
-    });
-    try {
-      final jar = await _client.loginHfs(
-        loginName: login,
-        password: pass,
-        roleType: _inlineAddRole,
-      );
-      final id = HfsUpstreamClient.accountIdFor(login, _inlineAddRole);
-      final acc = HfsAccount(
-        id: id,
-        label: _inlineAddLabelCtrl.text.trim(),
-        roleType: _inlineAddRole,
-        loginName: login,
-        password: pass,
-        cookies: jar,
-        students: <StudentInfo>[],
-      );
-      await _client.hydrateAccountStudents(acc);
-      _inlineAddLoginCtrl.clear();
-      _inlineAddPassCtrl.clear();
-      _inlineAddLabelCtrl.clear();
-      if (!mounted) return;
-      _setHomeState(() {
-        _inlineAddingAccount = false;
-        _showInlineQuickAddAccount = false;
-      });
-      await _handleUpsertAuthenticatedAccount(acc);
-    } catch (e) {
-      if (!mounted) return;
-      _setHomeState(() {
-        _inlineAddingAccount = false;
-        _errorBanner = e.toString().replaceFirst('Exception: ', '');
-      });
-    }
   }
 
   Future<void> _handleInlineBindStudent(HfsAccount acc) async {

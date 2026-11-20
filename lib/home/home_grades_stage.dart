@@ -274,6 +274,20 @@ extension _HfsHomeGradesStageExt on _HfsHomeScreenState {
                           icon: Icons.people_outline,
                           onTap: _openClassmatesRosterModal,
                         ),
+                        if (curExam != null && curExam.papers.isNotEmpty)
+                          _buildTopBarBtn(
+                            label: '调阅答题卡',
+                            icon: Icons.description_outlined,
+                            onTap: () => _openPaperInspection(
+                              curExam,
+                              _inspectingPaper != null &&
+                                      curExam.papers.any((p) =>
+                                          p.paperId ==
+                                          _inspectingPaper!.paperId)
+                                  ? _inspectingPaper!
+                                  : curExam.papers.first,
+                            ),
+                          ),
                       ],
                     );
                     return compact
@@ -301,7 +315,72 @@ extension _HfsHomeGradesStageExt on _HfsHomeScreenState {
         ),
         const SizedBox(height: 20),
 
-        // 1.5 Interactive Score Trend Line Chart & Subject Balance Analytics
+        // 2. Selected Exam Subject Papers & Answer-Sheet Launcher (hoisted
+        // directly under the banner so "调阅答题卡" is reachable without
+        // scrolling past the trend chart and the full score matrix).
+        if (curExam != null) ...[
+          Container(
+            decoration: BoxDecoration(
+              color: Taste.surface,
+              borderRadius: BorderRadius.circular(Taste.radiusCard),
+              border: Border.all(color: Taste.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      Text(
+                        '${curExam.name} · 各科试卷与答题卡调阅',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Taste.text,
+                        ),
+                      ),
+                      Text(
+                        '考试时间：${formatDateMs(curExam.time)} · 已出分科目：${curExam.papers.length} 科',
+                        style:
+                            const TextStyle(fontSize: 12, color: Taste.muted),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1, color: Taste.border),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: LayoutBuilder(
+                    builder: (ctx, box) {
+                      final cols = (box.maxWidth / 220).floor().clamp(1, 5);
+                      final tileW = (box.maxWidth - (cols - 1) * 12) / cols;
+                      return Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          for (final p in curExam.papers)
+                            SizedBox(
+                              width: tileW,
+                              child: _buildSubjectPaperTile(curExam, p),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+
+        // 3. Interactive Score Trend Line Chart & Subject Balance Analytics
         if (exams.isNotEmpty) ...[
           ScoreTrendAnalyticsCard(
             dashboard: dash,
@@ -312,7 +391,7 @@ extension _HfsHomeGradesStageExt on _HfsHomeScreenState {
           const SizedBox(height: 20),
         ],
 
-        // 2. Score Matrix Table Panel (Sticky Date/Name/Total + 2px Ratio Bar + Subject Filter)
+        // 4. Score Matrix Table Panel (Sticky Date/Name/Total + 2px Ratio Bar + Subject Filter)
         Container(
           decoration: BoxDecoration(
             color: Taste.surface,
@@ -449,68 +528,6 @@ extension _HfsHomeGradesStageExt on _HfsHomeScreenState {
             ],
           ),
         ),
-        const SizedBox(height: 20),
-
-        // 3. Selected Exam Subject Detail Cards Grid (.papers-grid -> .paper-tile)
-        if (curExam != null)
-          Container(
-            decoration: BoxDecoration(
-              color: Taste.surface,
-              borderRadius: BorderRadius.circular(Taste.radiusCard),
-              border: Border.all(color: Taste.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: Wrap(
-                    alignment: WrapAlignment.spaceBetween,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      Text(
-                        '${curExam.name} · 各科试卷与答题卡调阅',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Taste.text,
-                        ),
-                      ),
-                      Text(
-                        '考试时间：${formatDateMs(curExam.time)} · 已出分科目：${curExam.papers.length} 科',
-                        style:
-                            const TextStyle(fontSize: 12, color: Taste.muted),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1, color: Taste.border),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: LayoutBuilder(
-                    builder: (ctx, box) {
-                      final cols = (box.maxWidth / 220).floor().clamp(1, 5);
-                      final tileW = (box.maxWidth - (cols - 1) * 12) / cols;
-                      return Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          for (final p in curExam.papers)
-                            SizedBox(
-                              width: tileW,
-                              child: _buildSubjectPaperTile(curExam, p),
-                            ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
       ],
     );
   }

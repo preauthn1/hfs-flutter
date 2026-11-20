@@ -133,14 +133,8 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
   final TextEditingController _examDropdownSearchCtrl = TextEditingController();
   final Set<String> _hiddenSubjects = <String>{};
 
-  // Inline Quick-Add Account & Inline Bind-Student states in Left Dock
-  bool _showInlineQuickAddAccount = false;
-  int _inlineAddRole = 2;
-  final TextEditingController _inlineAddLoginCtrl = TextEditingController();
-  final TextEditingController _inlineAddPassCtrl = TextEditingController();
-  final TextEditingController _inlineAddLabelCtrl = TextEditingController();
-  bool _inlineAddingAccount = false;
-
+  // Inline Bind-Student state in Left Dock (single unified account-mount entry
+  // lives in the auth modal, so no duplicate inline "quick add account" box).
   String? _inlineBindAccountId;
   final TextEditingController _inlineBindNameCtrl = TextEditingController();
   final TextEditingController _inlineBindCodeCtrl = TextEditingController();
@@ -157,6 +151,9 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
   List<({HfsAccount account, StudentInfo student, StudentSnapshot? snapshot})>
       _fleetRows = const [];
   bool _loadingFleet = false;
+  // Live progress while traversing every account in parallel.
+  int _fleetProbeDone = 0;
+  int _fleetProbeTotal = 0;
   int _dashboardRequestId = 0;
   Future<void>? _persistGate;
 
@@ -191,9 +188,6 @@ class _HfsHomeScreenState extends State<HfsHomeScreen> {
   void dispose() {
     _leftDockScrollCtrl.dispose();
     _centerScrollCtrl.dispose();
-    _inlineAddLoginCtrl.dispose();
-    _inlineAddPassCtrl.dispose();
-    _inlineAddLabelCtrl.dispose();
     _inlineBindNameCtrl.dispose();
     _inlineBindCodeCtrl.dispose();
     _inlineBindAuthCtrl.dispose();

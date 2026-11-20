@@ -49,7 +49,9 @@ extension _HfsHomeFleetStageExt on _HfsHomeScreenState {
                       runSpacing: 6,
                       children: [
                         _buildTopBarBtn(
-                          label: _loadingFleet ? '正在遍历全员…' : '一键遍历同步全员成绩',
+                          label: _loadingFleet
+                              ? '正在遍历 $_fleetProbeDone/$_fleetProbeTotal 账号…'
+                              : '一键遍历同步全员成绩',
                           icon: Icons.sync,
                           onTap: _loadingFleet
                               ? null

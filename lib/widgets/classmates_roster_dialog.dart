@@ -958,6 +958,19 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
                                                           size: 11,
                                                           color: Taste.muted),
                                                     ),
+                                                    if (c.studentAccountUserId.isNotEmpty ||
+                                                        c.parentAccountUserId.isNotEmpty) ...[
+                                                      const SizedBox(height: 2),
+                                                      Text(
+                                                        '接口暴露账号 ID：'
+                                                        '${c.studentAccountUserId.isNotEmpty ? "学生端 ${_maskExposedUserId(c.studentAccountUserId)}" : ""}'
+                                                        '${c.studentAccountUserId.isNotEmpty && c.parentAccountUserId.isNotEmpty ? " · " : ""}'
+                                                        '${c.parentAccountUserId.isNotEmpty ? "家长端 ${_maskExposedUserId(c.parentAccountUserId)}" : ""}',
+                                                        style: Taste.numStyle(
+                                                            size: 10,
+                                                            color: Taste.warning),
+                                                      ),
+                                                    ],
                                                   ],
                                                 ),
                                               ),
@@ -1084,6 +1097,12 @@ class _ClassmatesRosterDialogState extends State<ClassmatesRosterDialog> {
         ),
       ),
     );
+  }
+
+  static String _maskExposedUserId(String value) {
+    final s = value.trim();
+    if (s.length <= 8) return s;
+    return '${s.substring(0, 6)}…${s.substring(s.length - 4)}';
   }
 }
 
