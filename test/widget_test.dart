@@ -265,7 +265,7 @@ void main() {
     // Switch to mobile tab 3 (多号与学生)
     await tester.tap(find.text('多号与学生'));
     await tester.pump(const Duration(milliseconds: 250));
-    expect(find.text('好分数账号与绑定学生'), findsOneWidget);
+    expect(find.text('账号与绑定学生'), findsOneWidget);
 
     // Open Settings modal on 320px screen & verify bottom bar clearance + '取消' hit area
     final navBarTop320 = tester.getTopLeft(find.byType(NavigationBar)).dy;
@@ -360,30 +360,32 @@ void main() {
     await tester.tap(find.textContaining('期中联考').last);
     await tester.pumpAndSettle();
 
-    // Scroll down to verify the score matrix table renders without overflow
+    // Subject paper cards now sit directly under the student banner (hoisted
+    // above the trend chart and the score matrix), so they are reachable with
+    // a short scroll. Open the mobile bottom-sheet PaperInspectionPane from a
+    // paper tile first, before the matrix which is now further down.
     final verticalScrollable = find.byWidgetPredicate(
       (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
     );
+    await tester.scrollUntilVisible(
+      find.textContaining('已出分科目：2 科'),
+      180.0,
+      scrollable: verticalScrollable.first,
+    );
+    await tester.tap(find.text('调阅答题卡 →').first);
+    await tester.pumpAndSettle();
+    expect(find.text('语文 · 试卷与答题卡调阅'), findsOneWidget);
+    await tester.tap(find.text('收起'));
+    await tester.pumpAndSettle();
+
+    // Continue scrolling down to verify the score matrix table (now below the
+    // papers and trend chart) still renders without overflow.
     await tester.scrollUntilVisible(
       find.text('历次考试总分与单科矩阵'),
       250.0,
       scrollable: verticalScrollable.first,
     );
     expect(find.text('历次考试总分与单科矩阵'), findsOneWidget);
-
-    // Scroll down to the subject paper cards and open mobile bottom-sheet PaperInspectionPane
-    await tester.scrollUntilVisible(
-      find.textContaining('已出分科目：2 科'),
-      180.0,
-      scrollable: verticalScrollable.first,
-    );
-    await tester.drag(find.byType(ListView).first, const Offset(0, -180));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('调阅答题卡 →').first);
-    await tester.pumpAndSettle();
-    expect(find.text('语文 · 试卷与答题卡调阅'), findsOneWidget);
-    await tester.tap(find.text('收起'));
-    await tester.pumpAndSettle();
 
     // 2. Desktop computer viewport (1440 x 900)
     tester.view.physicalSize = const Size(1440, 900);
