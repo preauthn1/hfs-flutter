@@ -40,8 +40,22 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
   int? _hoveredIndex;
 
   List<_ChartPoint> _buildPointsForSubject(String subject) {
-    // Chronological order (oldest -> newest)
-    final chronological = widget.dashboard.exams.reversed.toList();
+    // Chronological order (oldest -> newest) by actual exam timestamp.
+    // Do NOT rely on the raw list already being newest-first — sort explicitly
+    // so the x-axis is always monotonic in time. When a timestamp is missing
+    // (time == 0) fall back to reverse source order (reproducing the old
+    // newest-first-reversed behaviour) so those points stay stable.
+    final src = widget.dashboard.exams;
+    final order = <ExamRecord, int>{
+      for (var i = 0; i < src.length; i++) src[i]: i,
+    };
+    final chronological = src.toList()
+      ..sort((a, b) {
+        if (a.time != 0 && b.time != 0 && a.time != b.time) {
+          return a.time.compareTo(b.time);
+        }
+        return (order[b] ?? 0).compareTo(order[a] ?? 0);
+      });
     final pts = <_ChartPoint>[];
     for (final ex in chronological) {
       if (subject == '总分') {
@@ -406,7 +420,7 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
         ),
         const SizedBox(height: 10),
         SizedBox(
-          height: 196,
+          height: 212,
           child: LayoutBuilder(
             builder: (ctx, box) {
               const leftPad = 44.0;
@@ -441,7 +455,7 @@ class _ScoreTrendAnalyticsCardState extends State<ScoreTrendAnalyticsCard> {
                     );
                   },
                   child: CustomPaint(
-                    size: Size(box.maxWidth, 196),
+                    size: Size(box.maxWidth, 212),
                     painter: _ScoreLineChartPainter(
                       points: points,
                       avgValue: avgVal,
@@ -584,7 +598,7 @@ class _ScoreLineChartPainter extends CustomPainter {
     const leftPad = 44.0;
     const rightPad = 20.0;
     const topPad = 22.0;
-    const bottomPad = 30.0;
+    const bottomPad = 42.0; // room for two-line year+MM-DD axis labels
     final plotW = math.max(10.0, size.width - leftPad - rightPad);
     final plotH = math.max(10.0, size.height - topPad - bottomPad);
 
@@ -647,7 +661,10 @@ class _ScoreLineChartPainter extends CustomPainter {
       );
     }
 
-    // 3. Area fill & Smooth Line Path
+    // 3. Area fill & straight-segment line path.
+    // Use straight segments between exams, not a cubic spline: a spline
+    // implies continuous change between discrete exams and visually
+    // overshoots real values, which misreads the data.
     final linePath = Path();
     final fillPath = Path();
     for (var i = 0; i < points.length; i++) {
@@ -658,11 +675,8 @@ class _ScoreLineChartPainter extends CustomPainter {
         fillPath.moveTo(px, topPad + plotH);
         fillPath.lineTo(px, py);
       } else {
-        final prevX = xAt(i - 1);
-        final prevY = yAt(points[i - 1].value);
-        final midX = (prevX + px) / 2.0;
-        linePath.cubicTo(midX, prevY, midX, py, px, py);
-        fillPath.cubicTo(midX, prevY, midX, py, px, py);
+        linePath.lineTo(px, py);
+        fillPath.lineTo(px, py);
       }
       if (i == points.length - 1) {
         fillPath.lineTo(px, topPad + plotH);
@@ -697,6 +711,7 @@ class _ScoreLineChartPainter extends CustomPainter {
 
     // 4. Data nodes, value tags & X-axis dates
     final labelStep = math.max(1, (points.length / 7).ceil());
+    String? lastYearShown;
     for (var i = 0; i < points.length; i++) {
       final pt = points[i];
       final px = xAt(i);
@@ -736,32 +751,53 @@ class _ScoreLineChartPainter extends CustomPainter {
           ..style = PaintingStyle.stroke,
       );
 
-      // Value label above point (clamped horizontally inside canvas bounds)
+      // Value label with an opaque background pill, placed above or below the
+      // node depending on local slope so it never sits on the stroke. A V
+      // (local minimum) pushes the label down; a peak pushes it up.
       if (points.length <= 10 || isSel || isHov || i == points.length - 1) {
+        final prevV = i > 0 ? points[i - 1].value : pt.value;
+        final nextV = i < points.length - 1 ? points[i + 1].value : pt.value;
+        final isLocalMin = pt.value <= prevV && pt.value <= nextV;
+        final placeBelow = isLocalMin && !(isSel || isHov);
+        final labelY = placeBelow ? py + 9.0 : py - 20.0;
         _drawLabel(
           canvas,
           size,
           pt.displayValue,
-          Offset(px - 16, py - 18),
+          Offset(px - 16, labelY),
           color: isSel || isHov ? Taste.text : Taste.accent,
           fontSize: 10.5,
           weight: isSel || isHov ? FontWeight.w700 : FontWeight.w500,
+          background: Taste.surface.withValues(alpha: 0.92),
+          centerOnX: px,
         );
       }
 
-      // X-axis date label (clamped horizontally inside canvas bounds)
-      if (i % labelStep == 0 || i == points.length - 1 || isSel) {
-        final dateStr = formatDateMs(pt.exam.time);
-        final shortDate =
-            dateStr.length >= 10 ? dateStr.substring(5, 10) : dateStr;
+      // X-axis date label. Show the year the first time it appears (and on the
+      // first labelled point) so the axis is never a yearless MM-DD sequence
+      // that reads as non-chronological across semesters.
+      final showThis = i % labelStep == 0 || i == points.length - 1 || isSel;
+      if (showThis) {
+        final dateStr = formatDateMs(pt.exam.time); // YYYY-MM-DD or '—'
+        String axisLabel;
+        if (dateStr.length >= 10) {
+          final year = dateStr.substring(0, 4);
+          final mmdd = dateStr.substring(5, 10);
+          axisLabel = (year != lastYearShown) ? '$year\n$mmdd' : mmdd;
+          lastYearShown = year;
+        } else {
+          axisLabel = dateStr;
+        }
         _drawLabel(
           canvas,
           size,
-          shortDate,
+          axisLabel,
           Offset(px - 16, topPad + plotH + 6),
           color: isSel ? Taste.text : Taste.muted,
           fontSize: 10,
           weight: isSel ? FontWeight.w700 : FontWeight.w400,
+          centerOnX: px,
+          align: TextAlign.center,
         );
       }
     }
@@ -775,6 +811,9 @@ class _ScoreLineChartPainter extends CustomPainter {
     required Color color,
     required double fontSize,
     required FontWeight weight,
+    Color? background,
+    double? centerOnX,
+    TextAlign align = TextAlign.left,
   }) {
     final tp = TextPainter(
       text: TextSpan(
@@ -787,14 +826,29 @@ class _ScoreLineChartPainter extends CustomPainter {
           fontFeatures: const [ui.FontFeature.tabularFigures()],
         ),
       ),
+      textAlign: align,
       textDirection: TextDirection.ltr,
     )..layout();
-    final double safeX = offset.dx
+    final double wantX =
+        centerOnX != null ? centerOnX - tp.width / 2.0 : offset.dx;
+    final double safeX = wantX
         .clamp(2.0, math.max(2.0, canvasSize.width - tp.width - 2.0))
         .toDouble();
     final double safeY = offset.dy
         .clamp(1.0, math.max(1.0, canvasSize.height - tp.height - 1.0))
         .toDouble();
+    if (background != null) {
+      final rect = Rect.fromLTWH(
+        safeX - 3.0,
+        safeY - 1.0,
+        tp.width + 6.0,
+        tp.height + 2.0,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(3)),
+        Paint()..color = background,
+      );
+    }
     tp.paint(canvas, Offset(safeX, safeY));
   }
 

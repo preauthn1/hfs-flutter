@@ -362,17 +362,23 @@ class _PaperInspectionPaneState extends State<PaperInspectionPane> {
           ),
           child: Row(
             children: [
+              // While loading, show no count so "(0)" is not misread as
+              // "no data"; show the real count only once data has arrived.
               _buildSubTab(
                 0,
-                '批改合成 (${data?.answerPages.length ?? 0})',
+                _loading
+                    ? '批改合成'
+                    : '批改合成 (${data?.answerPages.length ?? 0})',
               ),
               _buildSubTab(
                 1,
-                '原卷与题块 ($originItemCount)',
+                _loading ? '原卷与题块' : '原卷与题块 ($originItemCount)',
               ),
               _buildSubTab(
                 2,
-                '得分明细 (${data?.questions.length ?? 0})',
+                _loading
+                    ? '得分明细'
+                    : '得分明细 (${data?.questions.length ?? 0})',
               ),
             ],
           ),
